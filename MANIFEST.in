@@ -1,0 +1,6 @@
+include *.md
+include requirements-lock.txt
+include Launch*.cmd
+recursive-include tools *.py
+recursive-include examples *.pdf
+recursive-include .github *.yml *.md CODEOWNERS

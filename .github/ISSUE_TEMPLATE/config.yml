@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/loganpendragonmultiverse/forge-pdf/security/advisories/new
+    about: Report vulnerabilities without sharing confidential PDFs publicly.

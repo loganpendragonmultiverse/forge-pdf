@@ -1,0 +1,17 @@
+name: PDF editing bug
+description: Report an editing or saved-output problem using a synthetic PDF.
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps and expected result
+      description: Include the app version, operating system, and a non-sensitive reproduction.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Actual result
+      description: Does the issue happen in the editor, saved PDF, or both?
+    validations:
+      required: true

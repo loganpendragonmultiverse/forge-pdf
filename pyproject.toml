@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forge-pdf"
+version = "1.0.0"
+description = "A small offline desktop PDF editor"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Logan Pendragon Multiverse"}]
+dependencies = ["pypdf>=6.18,<7", "cryptography>=50,<51", "pypdfium2>=5,<6", "Pillow>=12,<13", "reportlab>=4,<6"]
+
+[project.urls]
+Homepage = "https://www.loganpendragonforge.com/open-source/forge-pdf/"
+Repository = "https://github.com/loganpendragonmultiverse/forge-pdf"
+Issues = "https://github.com/loganpendragonmultiverse/forge-pdf/issues"
+
+[project.gui-scripts]
+forge-pdf = "forge_pdf.app:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.12", "build>=1", "pyinstaller>=6", "pip-audit>=2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

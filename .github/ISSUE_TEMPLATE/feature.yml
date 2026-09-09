@@ -1,0 +1,9 @@
+name: Editing improvement
+description: Describe an everyday PDF task the editor could make easier.
+body:
+  - type: textarea
+    id: task
+    attributes:
+      label: What task are you trying to complete?
+    validations:
+      required: true
