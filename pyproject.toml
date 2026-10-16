@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{name = "Logan Pendragon Multiverse"}]
-dependencies = ["pypdf>=6.18,<7", "cryptography>=50,<51", "pypdfium2>=5,<6", "Pillow>=12,<13", "reportlab>=4,<6"]
+dependencies = ["pypdf>=6.19,<7", "cryptography>=50,<51", "pypdfium2>=5,<6", "Pillow>=12,<13", "reportlab>=4,<6"]
 
 [project.urls]
 Homepage = "https://www.loganpendragonforge.com/open-source/forge-pdf/"

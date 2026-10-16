@@ -2,6 +2,8 @@
 
 ## 1.1.0 - 2026-10-16
 
+- Updated pypdf to 6.19.0 and raised its supported minimum to include the PDF parser security fixes.
+
 Use **More page actions → Export page ranges** for one-based selections such as `1,3-5`.
 Ranges ascend within each term; terms retain their entered order (`3,1-2` exports pages 3, 1,
 then 2). Duplicate, malformed, empty, and out-of-range selections are rejected. Review every
