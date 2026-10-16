@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -33,6 +34,25 @@ def serialize(writer: PdfWriter) -> bytes:
     stream = io.BytesIO()
     writer.write(stream)
     return stream.getvalue()
+
+
+def parse_page_ranges(selection: str, page_count: int) -> list[int]:
+    """Return zero-based indices in the user's explicit order; reject duplicates."""
+    indices: list[int] = []
+    seen: set[int] = set()
+    for part in selection.split(","):
+        match = re.fullmatch(r"\s*([0-9]+)(?:\s*-\s*([0-9]+))?\s*", part)
+        if not match:
+            raise ValueError("Use one-based pages and ascending ranges, for example 1,3-5.")
+        first, last = int(match[1]), int(match[2] or match[1])
+        if not 1 <= first <= last <= page_count:
+            raise ValueError(f"Choose ascending page ranges within 1 to {page_count}.")
+        for number in range(first, last + 1):
+            if number in seen:
+                raise ValueError("Select each page only once; duplicate pages are not allowed.")
+            seen.add(number)
+            indices.append(number - 1)
+    return indices
 
 
 class Document:
@@ -187,8 +207,21 @@ class Document:
         self.commit(writer)
 
     def export_page(self, index: int, path: Path, overwrite: bool = False) -> None:
+        self.export_pages([index], path, overwrite=overwrite)
+
+    def export_pages(self, indices: list[int], path: Path, overwrite: bool = False) -> None:
+        count = self.count
+        if not indices or any(
+            not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < count
+            for index in indices
+        ):
+            raise ValueError("Select at least one valid page.")
+        if len(set(indices)) != len(indices):
+            raise ValueError("Select each page only once.")
         writer = PdfWriter()
-        writer.add_page(PdfReader(io.BytesIO(self.data)).pages[index])
+        reader = PdfReader(io.BytesIO(self.data))
+        for index in indices:
+            writer.add_page(reader.pages[index])
         extracted = Document(serialize(writer))
         extracted.sources = self.sources.copy()
         extracted.save_copy(path, overwrite=overwrite)

@@ -128,3 +128,79 @@ def test_footer_dialog_defaults_and_cancel(editor, monkeypatch):
     app.history(False)
     assert not app.doc.dirty
     assert not errors
+
+
+def test_range_export_cancellation_and_repeated_flows(editor, monkeypatch, tmp_path):
+    from forge_pdf import app as shell
+
+    app, errors = editor
+    app.doc.rotate(0)
+    before = (app.doc.data, app.doc.saved, app.doc.undo_stack.copy(), app.doc.redo_stack.copy())
+    target = tmp_path / "ranges.pdf"
+    save_calls = []
+    monkeypatch.setattr(
+        shell.filedialog, "asksaveasfilename", lambda **kw: save_calls.append(kw) or str(target)
+    )
+    monkeypatch.setattr(shell.simpledialog, "askstring", lambda *args, **kw: None)
+    app.export_ranges()
+    assert not save_calls
+    monkeypatch.setattr(shell.simpledialog, "askstring", lambda *args, **kw: "1,1")
+    app.export_ranges()
+    assert "duplicate" in errors.pop().lower()
+    monkeypatch.setattr(shell.simpledialog, "askstring", lambda *args, **kw: "3,1-2")
+    monkeypatch.setattr(app, "review_export_pages", lambda indices: False)
+    app.export_ranges()
+    assert not save_calls
+    reviewed = []
+    monkeypatch.setattr(
+        app, "review_export_pages", lambda indices: reviewed.append(indices) or True
+    )
+    monkeypatch.setattr(shell.filedialog, "asksaveasfilename", lambda **kw: "")
+    app.export_ranges()
+    assert not target.exists()
+    monkeypatch.setattr(shell.filedialog, "asksaveasfilename", lambda **kw: str(target))
+    for _ in range(2):
+        app.export_ranges()
+    assert reviewed == [[2, 0, 1]] * 3
+    from pypdf import PdfReader
+
+    assert len(PdfReader(target).pages) == 3
+    assert (app.doc.data, app.doc.saved, app.doc.undo_stack, app.doc.redo_stack) == before
+    assert not errors
+
+
+def test_native_order_review_cancel_and_continue_restore_view(editor):
+    import tkinter as tk
+    from tkinter import ttk
+
+    app, errors = editor
+
+    def children(widget):
+        for child in widget.winfo_children():
+            yield child
+            yield from children(child)
+
+    for approved in [False, True]:
+
+        def operate(approved=approved):
+            dialog = next(child for child in app.winfo_children() if isinstance(child, tk.Toplevel))
+            listing = next(child for child in children(dialog) if isinstance(child, tk.Listbox))
+            assert list(listing.get(0, "end")) == [
+                "Output page 1 ← document page 3",
+                "Output page 2 ← document page 1",
+            ]
+            listing.selection_set(0)
+            listing.event_generate("<<ListboxSelect>>")
+            app.update()
+            assert app.page == 2
+            label = "Continue to save" if approved else "Cancel"
+            next(
+                child
+                for child in children(dialog)
+                if isinstance(child, ttk.Button) and child.cget("text") == label
+            ).invoke()
+
+        app.after(100, operate)
+        assert app.review_export_pages([2, 0]) is approved
+        assert app.page == 0
+    assert not errors
