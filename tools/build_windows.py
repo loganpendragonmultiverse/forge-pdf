@@ -35,7 +35,15 @@ def main():
     destination = ROOT / "dist" / "Forge PDF"
     support = destination / "Support"
     support.mkdir(exist_ok=True)
-    for name in ["README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "SECURITY.md", "TESTING.md"]:
+    for name in [
+        "README.md",
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "SECURITY.md",
+        "TESTING.md",
+        "DEVELOPMENT.md",
+        "CHANGELOG.md",
+    ]:
         shutil.copy2(ROOT / name, support / name)
     shutil.copytree(ROOT / "examples", support / "examples", dirs_exist_ok=True)
     licenses = support / "licenses"
@@ -69,7 +77,7 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
     archive = shutil.make_archive(
-        str(ROOT / "dist" / "Forge-PDF-1.0.0-Windows"), "zip", ROOT / "dist", "Forge PDF"
+        str(ROOT / "dist" / "Forge-PDF-1.1.0-Windows"), "zip", ROOT / "dist", "Forge PDF"
     )
     print(archive)
 

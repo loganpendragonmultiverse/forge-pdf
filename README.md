@@ -8,7 +8,7 @@ or upload. White out a line, add a replacement, remove a footer, or put pages in
 
 ## Quick start
 
-1. Download **Forge-PDF-1.0.0-Windows.zip** from the release page and extract it once.
+1. Download **Forge-PDF-1.1.0-Windows.zip** from the release page and extract it once.
 2. Open the **Forge PDF** folder and double-click **Forge PDF.exe**. No installation or Python setup is needed.
 3. Open a PDF, select **Whiteout**, and drag over the area you want to cover.
 4. Use **Add text** to place new text, then **Save a copy** under a different name.
@@ -89,3 +89,15 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [CONTRIBUTING.md](CONTRIBU
 and [TESTING.md](TESTING.md). Contributions go through maintainer-reviewed pull requests.
 There is no promised maintenance schedule. Report reproducible issues using synthetic,
 non-sensitive PDFs through [GitHub Issues](https://github.com/loganpendragonmultiverse/forge-pdf/issues).
+
+## 1.1.0 - 2026-10-16
+
+Use **More page actions → Export page ranges** for one-based selections such as `1,3-5`.
+Ranges ascend within each term; terms retain their entered order (`3,1-2` exports pages 3, 1,
+then 2). Duplicate, malformed, empty, and out-of-range selections are rejected. Review every
+output page in the ordered list; selecting an item previews that source page. Continue to save
+one new PDF, or cancel at selection, review, or save. Source files stay protected, and exporting
+does not clear unsaved edits or alter undo/redo history.
+
+Subset export is not secure redaction. Retained pages may contain hidden content, annotations,
+links, or other PDF objects. Review exported PDFs before sharing.

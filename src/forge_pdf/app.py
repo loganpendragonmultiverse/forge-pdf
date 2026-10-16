@@ -10,7 +10,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from PIL import ImageTk
 
 from . import __version__
-from .document import Document
+from .document import Document, parse_page_ranges
 
 NAVY = "#16232f"
 MINT = "#a9edcc"
@@ -192,6 +192,7 @@ class Editor(tk.Tk):
             command=lambda: self.change(lambda: self.doc.insert_blank(self.page)),
         )
         menu.add_command(label="Export this page…", command=self.export_page)
+        menu.add_command(label="Export page ranges…", command=self.export_ranges)
         menu.add_command(
             label="Rotate left",
             command=lambda: self.change(lambda: self.doc.rotate(self.page, -90)),
@@ -366,6 +367,84 @@ class Editor(tk.Tk):
                 self.status.configure(text=f"Exported page {self.page + 1}: {path}")
             except Exception as exc:
                 self.error(exc)
+
+    def review_export_pages(self, indices):
+        original_page = self.page
+        approved = False
+        dialog = tk.Toplevel(self)
+        dialog.title("Review page export order")
+        dialog.geometry("420x440")
+        dialog.transient(self)
+        ttk.Label(
+            dialog,
+            text="Select a row to preview its source page.\n"
+            "Export creates one new PDF in this order.\n"
+            "Subset export is not secure redaction.",
+            wraplength=390,
+        ).pack(padx=12, pady=12)
+        frame = ttk.Frame(dialog)
+        frame.pack(fill="both", expand=True, padx=12)
+        scroll = ttk.Scrollbar(frame)
+        scroll.pack(side="right", fill="y")
+        order = tk.Listbox(frame, yscrollcommand=scroll.set, exportselection=False)
+        order.pack(side="left", fill="both", expand=True)
+        scroll.configure(command=order.yview)
+        for output, index in enumerate(indices, 1):
+            order.insert("end", f"Output page {output} ← document page {index + 1}")
+        order.bind(
+            "<<ListboxSelect>>",
+            lambda event: (
+                self.show_page(indices[order.curselection()[0]]) if order.curselection() else None
+            ),
+        )
+
+        def accept():
+            nonlocal approved
+            approved = True
+            dialog.destroy()
+
+        actions = ttk.Frame(dialog)
+        actions.pack(fill="x", padx=12, pady=12)
+        ttk.Button(actions, text="Cancel", command=dialog.destroy).pack(side="left")
+        ttk.Button(actions, text="Continue to save", command=accept).pack(side="right")
+        dialog.bind("<Escape>", lambda event: dialog.destroy())
+        order.focus_set()
+        dialog.grab_set()
+        self.wait_window(dialog)
+        self.show_page(original_page)
+        return approved
+
+    def export_ranges(self):
+        if not self.doc:
+            return
+        selection = simpledialog.askstring(
+            "Export page ranges",
+            f"Pages from 1 to {self.doc.count}, for example 1,3-5.\n"
+            "Pages follow your entered order; duplicates are rejected.",
+            parent=self,
+            initialvalue=str(self.page + 1),
+        )
+        if selection is None:
+            return
+        try:
+            indices = parse_page_ranges(selection, self.doc.count)
+            if not self.review_export_pages(indices):
+                return
+            path = filedialog.asksaveasfilename(
+                parent=self,
+                title="Export selected pages",
+                initialdir=self.path.parent,
+                initialfile=f"{self.path.stem}-selected-pages.pdf",
+                defaultextension=".pdf",
+                filetypes=[("PDF documents", "*.pdf")],
+                confirmoverwrite=True,
+            )
+            if not path:
+                return
+            self.doc.export_pages(indices, Path(path), overwrite=Path(path).exists())
+            self.status.configure(text=f"Exported {len(indices)} selected pages: {path}")
+        except Exception as exc:
+            self.error(exc)
 
     def clear_footer(self):
         if not self.doc:
