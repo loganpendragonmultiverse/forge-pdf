@@ -31,6 +31,13 @@ user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
 CALLBACK = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 user32.EnumWindows.argtypes = [CALLBACK, wintypes.LPARAM]
+user32.IsWindow.argtypes = [wintypes.HWND]
+user32.PostMessageW.argtypes = [
+    wintypes.HWND,
+    wintypes.UINT,
+    wintypes.WPARAM,
+    wintypes.LPARAM,
+]
 
 
 class Keyboard(ctypes.Structure):
@@ -154,6 +161,8 @@ with tempfile.TemporaryDirectory(prefix="forge-pdf-portable-") as temporary:
     original = (ROOT / "examples" / "Welcome.pdf").read_bytes()
     source.write_bytes(original)
     process = subprocess.Popen([str(executable), str(source)], cwd=executable.parent)
+    main = None
+    report = None
     try:
         main = wait_window(source.name, timeout=30)
         time.sleep(0.5)
@@ -200,9 +209,14 @@ with tempfile.TemporaryDirectory(prefix="forge-pdf-portable-") as temporary:
             ],
             "boundary": "Synthetic smoke; model/Tk suite covers edits separately. No arbitrary-PDF, screen-reader or physical-device claim.",
         }
-        (OUTPUT / "result.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-        print(json.dumps(report, indent=2))
     finally:
         if process.poll() is None:
-            process.terminate()
-            process.wait(timeout=10)
+            if main is not None and user32.IsWindow(main):
+                if not user32.PostMessageW(main, 0x0010, 0, 0):  # WM_CLOSE
+                    raise RuntimeError("Could not request portable app shutdown.")
+            else:
+                process.terminate()
+            process.wait(timeout=15)
+    if report is not None:
+        (OUTPUT / "result.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(json.dumps(report, indent=2))
