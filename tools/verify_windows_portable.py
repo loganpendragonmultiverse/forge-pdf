@@ -218,7 +218,18 @@ with tempfile.TemporaryDirectory(prefix="forge-pdf-portable-") as temporary:
                     raise RuntimeError("Could not request portable app shutdown.")
             else:
                 process.terminate()
-            process.wait(timeout=15)
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                # The editing window can show a save prompt on close. Acceptance uses
+                # synthetic files, so stop only this spawned process tree before cleanup.
+                subprocess.run(
+                    ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                process.wait(timeout=15)
     if report is not None:
         (OUTPUT / "result.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(json.dumps(report, indent=2))
