@@ -8,7 +8,7 @@ or upload. White out a line, add a replacement, remove a footer, or put pages in
 
 ## Quick start
 
-1. Download **Forge-PDF-1.1.0-Windows.zip** from the release page and extract it once.
+1. Download **Forge-PDF-1.2.0-Windows.zip** from the release page and extract it once.
 2. Open the **Forge PDF** folder and double-click **Forge PDF.exe**. No installation or Python setup is needed.
 3. Open a PDF, select **Whiteout**, and drag over the area you want to cover.
 4. Use **Add text** to place new text, then **Save a copy** under a different name.
@@ -21,6 +21,14 @@ is the ready-to-run application.
 and images remain in the PDF and can be extracted. Do not use them to remove secrets.**
 
 ## Features
+
+- Find literal document text across pages with next/previous matches. Image-only pages need external OCR.
+- Add text with a selected local TrueType font and check the entered text for missing glyphs.
+- Place PNG/JPEG image stamps with a drag preview and preserved transparency.
+- Explicitly save/reopen a self-contained editing session, including bounded Undo history.
+- Render previews on a single worker; obsolete previews cannot replace newer pages.
+- Use two toolbar rows, a hideable pages panel and wrapped hints in smaller desktop windows.
+- Review an export summary of pages, links, form fields and annotations before sharing.
 
 - Drag-to-whiteout and highlight, with click-to-place text in sizes from 8 to 72 points.
 - Clear footer on every page: choose a height, defaulting to 5 pixels at 100% zoom.
@@ -40,10 +48,34 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 | Ctrl+S | Save a copy |
 | Ctrl+Z / Ctrl+Y | Undo / redo document edits |
 | Ctrl+G | Go to page |
+| Ctrl+F | Find document text |
+| F3 / Shift+F3 | Next / previous search match |
+| Ctrl+Shift+S | Save editing session |
+| Ctrl+Shift+O | Open editing session |
 | Page Up / Page Down | Previous / next page |
 | Ctrl+mouse wheel | Zoom |
 | Delete, with page list focused | Delete selected page |
 | Escape | Cancel selection and return to Browse |
+
+## Continuing an editing session
+
+Use **Session → Save editing session** to write a .forgepdf file. It contains the current
+PDF, up to 30 Undo snapshots within a 100 MB combined PDF payload budget, and original-file
+names/identities used to prevent overwriting. Older Undo snapshots may be omitted to fit.
+Redo history and selected font/image resource paths are not saved. Added content is already
+embedded in the PDF; sessions do not turn existing paragraphs or stamps into editable layers.
+
+Sessions are **unencrypted**, including documents originally opened with a password.
+Their Undo snapshots can retain earlier or deleted content. Review them before sharing.
+Opening a session restores its embedded PDF and view without reading recorded external
+files. Save an edited PDF separately; saving a session does not mark a PDF copy as exported.
+There is no autosave, background persistence, account connection or new persistent access.
+
+For a smaller window, use **Pages** to hide the sidebar. **Page actions** retains its commands.
+Use **Add text → Local font** and **Check glyphs** before placing new text. Choose an image
+under **Image stamp**, then drag its placement rectangle and review the preview before release.
+**Page actions → Export checks** is an object summary with review reminders, not a fidelity
+certificate. Continue reviewing exported links, forms, annotations and page ordering.
 
 ## Run from source
 
@@ -68,7 +100,13 @@ install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build c
   new marks are added. Links remain interactive; untouched pages retain their annotations.
 - Editing signed PDFs invalidates their cryptographic signatures. Password-opened edited
   copies are saved without encryption. Dynamic form appearances and malformed PDFs can fail.
-- Added text uses Helvetica and Western European characters and must fit on the page.
+- Added text defaults to Helvetica/Western European characters. Choose a local .ttf font
+  for other glyphs. Font files are limited to 20 MB; glyph presence does not establish
+  complex-script shaping, font licensing or arbitrary-font compatibility. Text must fit.
+- Image stamps accept PNG/JPEG up to 20 MB and 16 million pixels. They fit inside the
+  selected rectangle with their aspect ratio retained. Stamps are visual images, not signatures.
+- Text search is literal and case-insensitive, capped at 1000 matches and 256 query characters.
+  Search does not perform OCR or highlight exact glyph positions on the canvas.
 - Supports up to 50 MB and 500 pages, including merged output. Complex files can pause
   the interface during processing. This app is intended for modest everyday documents.
 - Undo keeps up to 30 edits within a 100 MB snapshot budget. No autosave or crash recovery.
@@ -79,7 +117,7 @@ install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build c
 ## Privacy
 
 The editor makes no network requests, uploads no files, runs no PDF scripts, and
-stores work in memory until you save. It is not a sandbox for hostile PDFs. Installation
+stores work in memory until you explicitly save a PDF copy or editing session. It is not a sandbox for hostile PDFs. Installation
 and development dependency audits use the network. See [SECURITY.md](SECURITY.md).
 
 ## Contributing and license

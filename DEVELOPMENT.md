@@ -42,3 +42,24 @@ does not clear unsaved edits or alter undo/redo history.
 
 Subset export is not secure redaction. Retained pages may contain hidden content, annotations,
 links, or other PDF objects. Review exported PDFs before sharing.
+
+## 1.2.0 - bounded offline editor additions
+
+Document search is literal, read-only, capped at 1000 matches; it is not OCR. Local TrueType
+fonts are embedded only for inserted text, with glyph diagnostics. PNG/JPEG stamps preserve
+selected bytes and preview a bounded thumbnail before committing a visible-page overlay.
+
+Explicit sessions use ZIP/JSON/PDF bytes, never pickle or extracted paths. Validate members,
+duplicate names, declared sizes, payload totals, schema types, PDF/page limits and view state.
+Read original destination identities without auto-opening stored paths. Preserve all previous
+source/alias protection and transactional edits. A session is unencrypted and retains Undo
+content; it does not mark a PDF export saved.
+
+All PDFium calls within each process share one reentrant lock. Worker inputs use bounded shared memory and results use a private pipe; no document data is written to temporary disk files. The GUI creates no background Python threads, preventing Tk finalization on a worker thread. Closing cancels only its own worker processes. One preview worker process coalesces requests;
+only matching generations paint, and all Tk/ImageTk operations stay on the main thread.
+Search uses a separate memory-only worker process and discards results if document bytes changed. Keep gesture
+capture stable while previews are pending. Test real event-loop responsiveness and stale results.
+
+Use tools/native-pdf.Dockerfile for optional headless Linux development checks; it does not
+establish Windows package acceptance. Required Windows CI and exact portable-artifact smoke,
+plus synthetic crop/rotation/link/form/annotation comparisons, remain release gates.

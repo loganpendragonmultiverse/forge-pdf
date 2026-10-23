@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0 — 2026-10-23
+
+- Add literal document search with next/previous navigation, including keyboard shortcuts.
+- Add local TrueType fonts for new text, with missing-glyph feedback.
+- Add PNG/JPEG stamps with immutable selected data, placement preview and transparent export.
+- Add explicit unencrypted editing sessions with self-contained PDFs, bounded Undo and original-file protection.
+- Coalesce asynchronous previews through one worker with serialized PDFium access and stale-result guards.
+- Improve compact desktop controls, focus access and wrapped hints; retain page actions with the sidebar hidden.
+- Add export object summaries and synthetic save/reopen checks across cropped/rotated pages.
+- Preserve visual-whiteout limitations, existing editing operations, no-network runtime and source protection.
+
+
+- Update audited runtime pins to Pillow 13.0.0 and pypdf 6.21.2.
+
 ## 1.1.0 - 2026-10-16
 
 - Updated pypdf to 6.19.0 and raised its supported minimum to include the PDF parser security fixes.
