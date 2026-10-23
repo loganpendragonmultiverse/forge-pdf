@@ -139,15 +139,17 @@ def screenshot(handle, name):
 
 
 def choose_destination(title, path):
-    wait_window(title)
-    hotkey(0x11, 0x41)  # Ctrl+A in the standard filename field.
+    dialog = wait_window(title)
+    hotkey(0x12, 0x4E)  # Alt+N focuses File name in the standard Windows dialog.
+    hotkey(0x11, 0x41)
     type_text(str(path))
     hotkey(0x0D)
-    deadline = time.monotonic() + 20
+    deadline = time.monotonic() + 30
     while not path.exists() and time.monotonic() < deadline:
         time.sleep(0.05)
     if not path.exists():
-        raise RuntimeError("Portable app did not write the selected destination.")
+        screenshot(dialog, "portable-save-failure.png")
+        raise RuntimeError(f"Portable app did not write the selected destination: {path.name}")
 
 
 archive = next((ROOT / "dist").glob("Forge-PDF-*-Windows.zip"))
