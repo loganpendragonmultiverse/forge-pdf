@@ -77,7 +77,7 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
     archive = shutil.make_archive(
-        str(ROOT / "dist" / "Forge-PDF-1.1.0-Windows"), "zip", ROOT / "dist", "Forge PDF"
+        str(ROOT / "dist" / "Forge-PDF-1.2.0-Windows"), "zip", ROOT / "dist", "Forge PDF"
     )
     print(archive)
 

@@ -1,9 +1,20 @@
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from forge_pdf.app import Editor
+
+
+def wait_preview(app):
+    deadline = time.monotonic() + 10
+    while app.preview_pending or app.pending_resize:
+        app.update()
+        if time.monotonic() > deadline:
+            raise AssertionError("Preview did not complete")
+        time.sleep(0.005)
+    app.update()
 
 
 @pytest.fixture(scope="module")
@@ -25,6 +36,7 @@ def editor(window, monkeypatch):
     app.update()
     app.load(Path(__file__).resolve().parents[1] / "examples" / "Welcome.pdf")
     app.update()
+    wait_preview(app)
     app.set_mode("whiteout")
     yield app, errors
     app.cancel_drag()
@@ -51,6 +63,7 @@ def test_click_jitter_and_repeated_drag_commit_once(editor):
         assert app.drag_start is not None
         app.release(point(app, 100, 65))
         app.release(point(app, 100, 65))  # Duplicate release cannot commit a second edit.
+        wait_preview(app)
         assert len(app.doc.undo_stack) == n + 1
         assert app.canvas.grab_current() is None
     assert not errors
@@ -60,10 +73,12 @@ def test_scroll_across_pages_in_both_directions(editor):
     app, errors = editor
     app.canvas.yview_moveto(1)
     app.wheel(SimpleNamespace(delta=-120))
+    wait_preview(app)
     assert app.page == 1
     assert app.canvas.yview()[0] == 0
     assert app.pages.curselection() == (1,)
     app.wheel(SimpleNamespace(delta=120))
+    wait_preview(app)
     assert app.page == 0
     assert app.canvas.yview()[1] >= 0.999
     assert not errors
@@ -76,6 +91,7 @@ def test_trackpad_deltas_and_drag_do_not_change_pages(editor):
         app.wheel(SimpleNamespace(delta=-30))
     assert app.page == 0
     app.wheel(SimpleNamespace(delta=-30))
+    wait_preview(app)
     assert app.page == 1
     app.press(point(app, 40, 40))
     app.wheel(SimpleNamespace(delta=120))
@@ -105,6 +121,7 @@ def test_drag_keeps_scrolled_view_and_100_percent_default(editor):
     app.press(SimpleNamespace(x=int(app.offset_x + 50), y=80))
     app.drag(SimpleNamespace(x=int(app.offset_x + 120), y=120))
     app.release(SimpleNamespace(x=int(app.offset_x + 120), y=120))
+    wait_preview(app)
     assert abs(app.canvas.yview()[0] - original_scroll) < 0.002
     assert len(app.doc.undo_stack) == 1
     assert not errors

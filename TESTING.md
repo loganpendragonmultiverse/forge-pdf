@@ -32,3 +32,18 @@ does not clear unsaved edits or alter undo/redo history.
 
 Subset export is not secure redaction. Retained pages may contain hidden content, annotations,
 links, or other PDF objects. Review exported PDFs before sharing.
+
+## 1.2.0 acceptance
+
+The suite covers literal search, local-font glyph errors and Unicode save/reopen, transparent
+image stamps under all four rotations with cropped pages, session Undo/state restoration,
+source and hardlink protection, malformed session metadata/member refusal and no automatic
+external-file loads. Desktop tests cover actual saved sessions, font selection, search,
+immutable stamp previews, compact page actions and delayed/stale preview workers.
+
+Headless Linux Tk results are development evidence only. Windows 3.11/3.14 checks and a launch/
+load/save/session smoke of the exact portable ZIP are required before release. Compare rendered
+synthetic pages and inspect retained links/forms/annotation appearances. A successful object
+preflight or test fixture is not a guarantee for arbitrary documents, fonts or accessibility tools.
+Screen-reader, physical small-device, large-file responsiveness and hostile-PDF isolation remain
+unverified. Do not advertise whiteout, subset export or image stamps as security redaction.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import math
 import os
 import re
 import tempfile
@@ -12,7 +13,10 @@ import pypdfium2 as pdfium
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf.generic import ArrayObject, NameObject
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
+
+from .enhancements import serialized_pdfium, stamp_image, text_font, fit_stamp_size
 
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PAGES = 500
@@ -21,10 +25,10 @@ HISTORY_BYTES = 100 * 1024 * 1024
 
 def read_pdf(data: bytes) -> PdfReader:
     if len(data) > MAX_BYTES:
-        raise ValueError("This first build supports PDFs up to 50 MB.")
+        raise ValueError("Forge PDF supports PDFs up to 50 MB.")
     reader = PdfReader(io.BytesIO(data))
     if reader.is_encrypted:
-        raise ValueError("Password-protected PDFs are not supported in this first build.")
+        raise ValueError("Password-protected PDFs must be opened through Open PDF before editing.")
     if not 0 < len(reader.pages) <= MAX_PAGES:
         raise ValueError("Please use a PDF containing 1 to 500 pages.")
     return reader
@@ -61,13 +65,17 @@ class Document:
         self.data = data
         self.saved = data
         self.sources = {source.resolve()} if source else set()
+        self.source_identities = set()
+        if source and source.exists():
+            stat = source.stat()
+            self.source_identities.add((stat.st_dev, stat.st_ino))
         self.undo_stack: list[bytes] = []
         self.redo_stack: list[bytes] = []
 
     @classmethod
     def open(cls, path: Path, password: str | None = None) -> Document:
         if path.stat().st_size > MAX_BYTES:
-            raise ValueError("This first build supports PDFs up to 50 MB.")
+            raise ValueError("Forge PDF supports PDFs up to 50 MB.")
         data = path.read_bytes()
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted:
@@ -135,7 +143,9 @@ class Document:
         writer.append(PdfReader(io.BytesIO(other.data)), import_outline=False)
         self.commit(writer)
         self.sources.add(path.resolve())
+        self.source_identities.update(other.source_identities)
 
+    @serialized_pdfium
     def render(self, index: int, scale: float = 1.0):
         with pdfium.PdfDocument(self.data) as pdf:
             pdf.init_forms()
@@ -151,6 +161,7 @@ class Document:
             finally:
                 page.close()
 
+    @serialized_pdfium
     def size(self, index: int) -> tuple[float, float]:
         with pdfium.PdfDocument(self.data) as pdf:
             page = pdf[index]
@@ -159,6 +170,7 @@ class Document:
             finally:
                 page.close()
 
+    @serialized_pdfium
     def mark_writer(self, index: int) -> PdfWriter:
         original = self.writer()
         annotations = original.pages[index].get("/Annots", [])
@@ -224,6 +236,7 @@ class Document:
             writer.add_page(reader.pages[index])
         extracted = Document(serialize(writer))
         extracted.sources = self.sources.copy()
+        extracted.source_identities = self.source_identities.copy()
         extracted.save_copy(path, overwrite=overwrite)
 
     def clear_footer(self, pixels: int = 5) -> None:
@@ -238,7 +251,16 @@ class Document:
             working.undo_stack.clear()
         self.commit(working.writer())
 
-    def overlay(self, index: int, kind: str, box: tuple, text: str = "", size: int = 16):
+    def overlay(
+        self,
+        index: int,
+        kind: str,
+        box: tuple,
+        text: str = "",
+        size: int = 16,
+        font_path: Path | None = None,
+        image_path: Path | bytes | None = None,
+    ):
         writer = self.mark_writer(index)
         page = writer.pages[index]
         left, bottom = float(page.cropbox.left), float(page.cropbox.bottom)
@@ -258,31 +280,43 @@ class Document:
         stream = io.BytesIO()
         canvas = Canvas(stream, pagesize=(width, height))
         x, y, x2, y2 = box
+        if not all(math.isfinite(value) for value in (x, y, x2, y2)):
+            raise ValueError("Choose finite page coordinates.")
         if kind == "text":
             if not text.strip():
                 raise ValueError("Enter some text first.")
-            try:
-                text.encode("cp1252")
-            except UnicodeEncodeError as exc:
-                raise ValueError(
-                    "Text currently supports Western European characters only."
-                ) from exc
+            font = text_font(text, font_path)
             if not 8 <= size <= 72:
                 raise ValueError("Choose a text size between 8 and 72 points.")
             lines = text.splitlines()
             if (
                 x < 0
                 or y < 0
-                or x + max(stringWidth(line, "Helvetica", size) for line in lines) > width
+                or x + max(stringWidth(line, font, size) for line in lines) > width
                 or y + len(lines) * size * 1.25 > height
             ):
                 raise ValueError(
                     "The text does not fit here. Use a smaller size or click farther left/up."
                 )
             canvas.setFillColorRGB(0.08, 0.13, 0.20)
-            canvas.setFont("Helvetica", size)
+            canvas.setFont(font, size)
             for n, line in enumerate(lines):
                 canvas.drawString(x, height - y - size - n * size * 1.25, line)
+        elif kind == "image":
+            if image_path is None:
+                raise ValueError("Choose a PNG or JPEG stamp first.")
+            if not 0 <= x < x2 <= width or not 0 <= y < y2 <= height:
+                raise ValueError("Draw the complete image-stamp rectangle inside the page.")
+            image = stamp_image(image_path)
+            stamp_width, stamp_height = fit_stamp_size(image.size, x2 - x, y2 - y)
+            canvas.drawImage(
+                ImageReader(image),
+                x + (x2 - x - stamp_width) / 2,
+                height - y2 + (y2 - y - stamp_height) / 2,
+                stamp_width,
+                stamp_height,
+                mask="auto",
+            )
         elif kind in ("highlight", "whiteout"):
             x, x2 = sorted((max(0, min(width, x)), max(0, min(width, x2))))
             y, y2 = sorted((max(0, min(height, y)), max(0, min(height, y2))))
@@ -300,38 +334,91 @@ class Document:
         page.merge_transformed_page(PdfReader(stream).pages[0], Transformation(matrices[rotation]))
         self.commit(writer)
 
+    def search(self, query: str, limit: int = 1000) -> list[dict]:
+        """Literal case-insensitive text search; image-only pages require external OCR."""
+        if not isinstance(query, str) or not query.strip() or len(query) > 256:
+            raise ValueError("Enter 1 to 256 search characters.")
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Search results are limited to 1 through 1000 matches.")
+        matches = []
+        pattern = re.compile(re.escape(query), re.IGNORECASE)
+        for index, page in enumerate(read_pdf(self.data).pages):
+            text = page.extract_text() or ""
+            if len(text) > 2_000_000:
+                raise ValueError("This page has too much extracted text for bounded search.")
+            for match in pattern.finditer(text):
+                excerpt = text[max(0, match.start() - 35) : match.end() + 60]
+                matches.append({"page": index, "excerpt": " ".join(excerpt.split())})
+                if len(matches) >= limit:
+                    return matches
+        return matches
+
+    def export_preflight(self) -> dict:
+        reader = read_pdf(self.data)
+        links = annotations = 0
+        for page in reader.pages:
+            for reference in page.get("/Annots", []):
+                if reference.get_object().get("/Subtype") == "/Link":
+                    links += 1
+                else:
+                    annotations += 1
+        return {
+            "pages": len(reader.pages),
+            "bytes": len(self.data),
+            "links": links,
+            "other_annotations": annotations,
+            "forms": len(reader.get_fields() or {}),
+            "warnings": [
+                "Visual whiteout and subset export are not secure redaction.",
+                "Edited PDFs and editing sessions are unencrypted.",
+                "Editing does not preserve valid digital signatures.",
+                "Review links, forms and annotation appearances in the exported copy.",
+            ],
+        }
+
+    def check_destination(self, path: Path) -> None:
+        # Only stat the explicitly selected destination, never auto-open session source paths.
+        resolved = path.resolve()
+        original_names = {os.path.normcase(os.path.abspath(source)) for source in self.sources}
+        if os.path.normcase(str(resolved)) in original_names:
+            raise ValueError(
+                "Choose a different name. Forge PDF keeps your original files untouched."
+            )
+        if resolved.exists():
+            stat = resolved.stat()
+            if (stat.st_dev, stat.st_ino) in self.source_identities:
+                raise ValueError(
+                    "Choose a different name. Forge PDF keeps your original files untouched."
+                )
+
     def save_copy(self, path: Path, overwrite: bool = False) -> None:
         path = path.resolve()
         if path.suffix.lower() != ".pdf":
             raise ValueError("Save the document with a .pdf extension.")
-        if path in self.sources or any(
-            path.exists() and os.path.samefile(path, source)
-            for source in self.sources
-            if source.exists()
-        ):
-            raise ValueError(
-                "Choose a different name. Forge PDF keeps your original files untouched."
-            )
+        self.check_destination(path)
         read_pdf(self.data)
-        fd, name = tempfile.mkstemp(prefix=".forge-pdf-", suffix=".tmp", dir=path.parent)
-        try:
-            with os.fdopen(fd, "wb") as output:
-                output.write(self.data)
-                output.flush()
-                os.fsync(output.fileno())
-            if overwrite:
-                os.replace(name, path)
-            else:
-                # Exclusive create prevents a race with another process's destination.
-                with path.open("xb") as output:
-                    try:
-                        output.write(self.data)
-                        output.flush()
-                        os.fsync(output.fileno())
-                    except BaseException:
-                        output.close()
-                        path.unlink(missing_ok=True)
-                        raise
-            self.saved = self.data
-        finally:
-            Path(name).unlink(missing_ok=True)
+        write_copy_bytes(path, self.data, overwrite)
+        self.saved = self.data
+
+
+def write_copy_bytes(path: Path, data: bytes, overwrite: bool = False) -> None:
+    fd, name = tempfile.mkstemp(prefix=".forge-pdf-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(data)
+            output.flush()
+            os.fsync(output.fileno())
+        if overwrite:
+            os.replace(name, path)
+        else:
+            with path.open("xb") as output:
+                try:
+                    output.write(data)
+                    output.flush()
+                    os.fsync(output.fileno())
+                except BaseException:
+                    output.close()
+                    path.unlink(missing_ok=True)
+                    raise
+    finally:
+        Path(name).unlink(missing_ok=True)

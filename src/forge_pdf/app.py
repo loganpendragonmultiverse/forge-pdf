@@ -7,10 +7,19 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from . import __version__
 from .document import Document, parse_page_ranges
+from .workers import NativeWorker
+from .enhancements import (
+    fit_stamp_size,
+    open_session,
+    save_session,
+    stamp_image,
+    text_font,
+    RESOURCE_BYTES,
+)
 
 NAVY = "#16232f"
 MINT = "#a9edcc"
@@ -23,7 +32,7 @@ class Editor(tk.Tk):
         super().__init__()
         self.title("Forge PDF")
         self.geometry("1180x820")
-        self.minsize(960, 640)
+        self.minsize(740, 520)
         self.configure(bg=PAPER)
         self.option_add("*Font", ("Segoe UI", 10))
         self.doc = None
@@ -38,6 +47,26 @@ class Editor(tk.Tk):
         self.wheel_delta = 0
         self.pending_resize = None
         self.photo = None
+        self.local_font = None
+        self.stamp_data = None
+        self.stamp_thumbnail = None
+        self.stamp_preview_image = None
+        self.preview_executor = NativeWorker("preview")
+        self.search_executor = NativeWorker("search")
+        self.preview_future = None
+        self.preview_request = None
+        self.preview_generation = 0
+        self.preview_pending = False
+        self.preview_poll = None
+        self.view_target = None
+        self.closing = False
+        self.search_window = None
+        self.search_future = None
+        self.search_results = []
+        self.search_snapshot = None
+        self.search_position = -1
+        self.search_info = tk.StringVar(value="")
+
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure(
@@ -48,14 +77,23 @@ class Editor(tk.Tk):
             borderwidth=0,
             font=("Segoe UI", 10),
         )
+        style.configure("Compact.TButton", padding=(6, 4), font=("Segoe UI", 9))
+        style.configure("Compact.TMenubutton", padding=(6, 4), font=("Segoe UI", 9))
         style.map("TButton", background=[("active", "#e5ecef")])
         style.configure(
             "Accent.TButton", background=MINT, foreground=NAVY, font=("Segoe UI", 10, "bold")
         )
-        style.configure("Tool.TRadiobutton", padding=(10, 8), background="white", foreground=INK)
+        style.configure(
+            "Tool.TRadiobutton",
+            padding=(6, 6),
+            background="white",
+            foreground=INK,
+            font=("Segoe UI", 9),
+        )
         style.map("Tool.TRadiobutton", background=[("selected", "#d9f5e7")])
         self.build()
         self.protocol("WM_DELETE_WINDOW", self.close)
+        self.bind("<Configure>", self.window_resize, add="+")
         self.bind("<Control-o>", lambda e: self.open_dialog())
         self.bind("<Control-s>", lambda e: self.save())
         self.bind(
@@ -75,6 +113,11 @@ class Editor(tk.Tk):
             ),
         )
         self.bind("<Escape>", lambda e: self.set_mode("view"))
+        self.bind("<Control-f>", lambda e: self.find_dialog())
+        self.bind("<F3>", lambda e: self.next_match(1))
+        self.bind("<Shift-F3>", lambda e: self.next_match(-1))
+        self.bind("<Control-Shift-S>", lambda e: self.save_session_dialog())
+        self.bind("<Control-Shift-O>", lambda e: self.open_session_dialog())
         self.bind("<Control-g>", lambda e: self.go_to_page())
         self.bind("<Prior>", lambda e: self.navigate(-1))
         self.bind("<Next>", lambda e: self.navigate(1))
@@ -98,44 +141,90 @@ class Editor(tk.Tk):
             side="right", padx=(8, 24)
         )
         ttk.Button(header, text="Open PDF", command=self.open_dialog).pack(side="right")
-        tk.Label(
-            header, text="OFFLINE  /  FREE", bg=NAVY, fg=MINT, font=("Segoe UI", 9, "bold")
-        ).pack(side="right", padx=22)
+        session = ttk.Menubutton(header, text="Session")
+        session_menu = tk.Menu(session, tearoff=False)
+        session_menu.add_command(
+            label="Save editing session…  Ctrl+Shift+S", command=self.save_session_dialog
+        )
+        session_menu.add_command(
+            label="Open editing session…  Ctrl+Shift+O", command=self.open_session_dialog
+        )
+        session.configure(menu=session_menu)
+        session.pack(side="right", padx=8)
 
         toolbar = tk.Frame(self, bg="white", pady=10, padx=20)
         toolbar.pack(fill="x")
+        tools = tk.Frame(toolbar, bg="white")
+        tools.pack(fill="x")
+        actions = tk.Frame(toolbar, bg="white")
+        actions.pack(fill="x", pady=(4, 0))
+        ttk.Button(
+            tools, style="Compact.TButton", width=0, text="Find…", command=self.find_dialog
+        ).pack(side="right")
+        ttk.Button(
+            tools, style="Compact.TButton", width=0, text="Pages", command=self.toggle_sidebar
+        ).pack(side="right")
+
         for value, label in [
             ("view", "Browse"),
             ("text", "Add text"),
             ("highlight", "Highlight"),
             ("whiteout", "Whiteout"),
+            ("image", "Image stamp"),
         ]:
             ttk.Radiobutton(
-                toolbar,
+                tools,
                 text=label,
                 value=value,
                 variable=self.mode,
                 style="Tool.TRadiobutton",
                 command=self.mode_changed,
             ).pack(side="left", padx=(0, 4))
-        self.undo_button = ttk.Button(toolbar, text="Undo", command=lambda: self.history(False))
-        self.undo_button.pack(side="left", padx=(20, 4))
-        self.redo_button = ttk.Button(toolbar, text="Redo", command=lambda: self.history(True))
+        self.undo_button = ttk.Button(
+            actions,
+            style="Compact.TButton",
+            text="Undo",
+            width=0,
+            command=lambda: self.history(False),
+        )
+        self.undo_button.pack(side="left", padx=(0, 4))
+        self.redo_button = ttk.Button(
+            actions,
+            style="Compact.TButton",
+            text="Redo",
+            width=0,
+            command=lambda: self.history(True),
+        )
         self.redo_button.pack(side="left")
-        ttk.Button(toolbar, text="Clear footer…", command=self.clear_footer).pack(
-            side="left", padx=(12, 0)
+        ttk.Button(
+            actions,
+            style="Compact.TButton",
+            text="Clear footer…",
+            width=0,
+            command=self.clear_footer,
+        ).pack(side="left", padx=(6, 0))
+        ttk.Button(
+            actions, style="Compact.TButton", text="Fit page", width=0, command=self.fit_page
+        ).pack(side="right")
+        ttk.Button(
+            actions, style="Compact.TButton", text="+", width=3, command=lambda: self.zoom_by(1.2)
+        ).pack(side="right")
+        self.zoom_label = ttk.Button(
+            actions, style="Compact.TButton", text="100%", width=6, command=self.actual_size
         )
-        ttk.Button(toolbar, text="Fit page", command=self.fit_page).pack(side="right")
-        ttk.Button(toolbar, text="+", width=3, command=lambda: self.zoom_by(1.2)).pack(side="right")
-        self.zoom_label = ttk.Button(toolbar, text="100%", width=6, command=self.actual_size)
         self.zoom_label.pack(side="right")
-        ttk.Button(toolbar, text="−", width=3, command=lambda: self.zoom_by(1 / 1.2)).pack(
-            side="right"
-        )
+        ttk.Button(
+            actions,
+            style="Compact.TButton",
+            text="−",
+            width=3,
+            command=lambda: self.zoom_by(1 / 1.2),
+        ).pack(side="right")
 
         body = tk.Frame(self, bg=PAPER)
         body.pack(fill="both", expand=True)
-        sidebar = tk.Frame(body, bg="white", width=210, padx=16, pady=18)
+        sidebar = tk.Frame(body, bg="white", width=185, padx=12, pady=12)
+        self.sidebar = sidebar
         sidebar.pack(side="left", fill="y", padx=(0, 1))
         sidebar.pack_propagate(False)
         tk.Label(
@@ -198,6 +287,17 @@ class Editor(tk.Tk):
             command=lambda: self.change(lambda: self.doc.rotate(self.page, -90)),
         )
         menu.add_command(label="Go to page…  Ctrl+G", command=self.go_to_page)
+        menu.add_separator()
+        menu.add_command(label="Rotate right", command=self.rotate)
+        menu.add_command(label="Move page up", command=lambda: self.move(-1))
+        menu.add_command(label="Move page down", command=lambda: self.move(1))
+        menu.add_command(label="Delete page", command=self.delete)
+        menu.add_command(label="Merge another PDF…", command=self.merge)
+        menu.add_command(label="Export checks…", command=self.preflight_dialog)
+        actions_menu = ttk.Menubutton(
+            actions, text="Page actions", menu=menu, style="Compact.TMenubutton", width=0
+        )
+        actions_menu.pack(side="left", padx=(8, 0))
         more.configure(menu=menu)
         more.pack(fill="x", pady=(8, 0))
         tk.Label(
@@ -209,6 +309,7 @@ class Editor(tk.Tk):
         ).pack(anchor="w", pady=(18, 0))
 
         workspace = tk.Frame(body, bg=PAPER)
+        self.workspace = workspace
         workspace.pack(side="left", fill="both", expand=True)
         self.hint = tk.Label(
             workspace, text="", bg=PAPER, fg="#516675", anchor="w", padx=22, pady=12
@@ -223,9 +324,21 @@ class Editor(tk.Tk):
         ttk.Spinbox(self.textbar, from_=8, to=72, textvariable=self.font_size, width=5).pack(
             side="left"
         )
+        ttk.Button(self.textbar, text="Local font…", command=self.choose_font).pack(
+            side="left", padx=6
+        )
+        ttk.Button(self.textbar, text="Check glyphs", command=self.check_glyphs).pack(side="left")
+        self.imagebar = tk.Frame(workspace, bg=PAPER, padx=22, pady=6)
+        ttk.Button(self.imagebar, text="Choose PNG/JPEG…", command=self.choose_stamp).pack(
+            side="left"
+        )
+        self.stamp_label = ttk.Label(
+            self.imagebar, text="Choose an image, then drag its placement rectangle."
+        )
+        self.stamp_label.pack(side="left", padx=8)
         canvasframe = tk.Frame(workspace, bg="#e5eaee")
         canvasframe.pack(fill="both", expand=True, padx=18, pady=(0, 14))
-        self.canvas = tk.Canvas(canvasframe, bg="#e5eaee", highlightthickness=0)
+        self.canvas = tk.Canvas(canvasframe, bg="#e5eaee", highlightthickness=1, takefocus=True)
         yscroll = ttk.Scrollbar(canvasframe, command=self.canvas.yview)
         xscroll = ttk.Scrollbar(canvasframe, orient="horizontal", command=self.canvas.xview)
         yscroll.pack(side="right", fill="y")
@@ -489,8 +602,8 @@ class Editor(tk.Tk):
         self.pages.selection_clear(0, "end")
         self.pages.selection_set(self.page)
         self.pages.see(self.page)
+        self.view_target = (0, 1 if bottom else 0)
         self.render()
-        self.canvas.yview_moveto(1 if bottom else 0)
 
     def navigate(self, direction):
         if self.doc:
@@ -584,6 +697,10 @@ class Editor(tk.Tk):
             self.textbar.pack(fill="x", after=self.hint)
         else:
             self.textbar.pack_forget()
+        if self.mode.get() == "image":
+            self.imagebar.pack(fill="x", after=self.hint)
+        else:
+            self.imagebar.pack_forget()
         self.canvas.configure(cursor="crosshair" if self.mode.get() != "view" else "")
         self.hint.configure(
             text={
@@ -591,6 +708,7 @@ class Editor(tk.Tk):
                 "text": "Enter your text above, then click on the page to place it. Ctrl+Z to undo.",
                 "highlight": "Drag across an area to highlight it. Highlights do not remove or redact text.",
                 "whiteout": "Drag to cover an area in white. Visual cover only — underlying content can still be extracted.",
+                "image": "Choose a PNG/JPEG, then drag a rectangle. The image fits inside it; preview before release.",
             }[self.mode.get()]
         )
 
@@ -635,60 +753,302 @@ class Editor(tk.Tk):
 
     def render(self):
         self.pending_resize = None
-        if self.drag_start is not None:
+        if self.drag_start is not None or self.closing:
             return
-        old_x, old_y = self.canvas.xview()[0], self.canvas.yview()[0]
-        self.canvas.delete("all")
-        cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
+        self.preview_generation += 1
         if not self.doc:
+            self.preview_request = None
+            self.preview_pending = False
+            self.canvas.delete("all")
             self.canvas.create_text(
-                cw / 2,
-                ch / 2 - 45,
-                text="A little less PDF friction.",
+                max(100, self.canvas.winfo_width() / 2),
+                max(100, self.canvas.winfo_height() / 2),
+                text="Open a PDF to start.  Ctrl+O",
                 fill=INK,
-                font=("Segoe UI", 25, "bold"),
+                font=("Segoe UI", 18),
             )
-            self.canvas.create_text(
-                cw / 2,
-                ch / 2 + 5,
-                text="Open a PDF to mark it up and put its pages in order.",
-                fill="#516675",
-                font=("Segoe UI", 11),
-            )
-            self.canvas.create_text(
-                cw / 2,
-                ch / 2 + 42,
-                text="OPEN PDF  ·  CTRL+O",
-                fill="#32755c",
-                font=("Segoe UI", 10, "bold"),
-            )
+            return
+        self.preview_pending = True
+        self.preview_request = (
+            self.preview_generation,
+            self.doc.data,
+            self.page,
+            self.zoom,
+            self.fit,
+            max(1, self.canvas.winfo_width()),
+            max(1, self.canvas.winfo_height()),
+            self.view_target or (self.canvas.xview()[0], self.canvas.yview()[0]),
+        )
+        self.view_target = None
+        self._start_preview()
+
+    def _start_preview(self):
+        if self.preview_future is not None or self.preview_request is None or self.closing:
+            return
+        request = self.preview_request
+        self.preview_request = None
+
+        generation, data, index, zoom, fit, cw, ch, view = request
+        params = dict(
+            generation=generation, page=index, zoom=zoom, fit=fit, cw=cw, ch=ch, view=view
+        )
+        self.preview_future = self.preview_executor.submit(data, params)
+        self.preview_poll = self.after(15, self._poll_preview)
+
+    def _poll_preview(self):
+        self.preview_poll = None
+        if self.closing:
+            return
+        future = self.preview_future
+        if not future.done() or self.drag_start is not None:
+            self.preview_poll = self.after(15, self._poll_preview)
+            return
+        self.preview_future = None
+        try:
+            generation, image, width, height, zoom, cw, ch, view = future.result()
+            if generation == self.preview_generation and self.doc:
+                self.canvas.delete("all")
+                self.scale_x, self.scale_y = image.width / width, image.height / height
+                self.offset_x, self.offset_y = max(24, (cw - image.width) / 2), 24
+                self.photo = ImageTk.PhotoImage(image)
+                self.canvas.create_image(
+                    self.offset_x, self.offset_y, image=self.photo, anchor="nw"
+                )
+                self.canvas.configure(
+                    scrollregion=(0, 0, max(cw, image.width + 48), max(ch, image.height + 48))
+                )
+                self.canvas.xview_moveto(view[0])
+                self.canvas.yview_moveto(view[1])
+                self.zoom = zoom
+                self.zoom_label.configure(text=f"{self.scale_x:.0%}")
+                self.preview_pending = False
+        except Exception as exc:
+            if self.preview_request is None:
+                self.preview_pending = False
+                self.error(exc)
+        self._start_preview()
+
+    def window_resize(self, event):
+        if event.widget is self:
+            self.status.configure(wraplength=max(200, self.winfo_width() - 44))
+            self.hint.configure(wraplength=max(200, self.workspace.winfo_width() - 44))
+
+    def toggle_sidebar(self):
+        if self.sidebar.winfo_manager():
+            self.sidebar.pack_forget()
+        else:
+            self.sidebar.pack(side="left", fill="y", padx=(0, 1), before=self.workspace)
+
+    def choose_font(self):
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Choose a local TrueType font",
+            filetypes=[("TrueType fonts", "*.ttf")],
+        )
+        if not path:
             return
         try:
-            w, h = self.doc.size(self.page)
-            if self.fit:
-                self.zoom = max(0.05, min((cw - 48) / w, (ch - 48) / h, 2))
-            image = self.doc.render(self.page, self.zoom)
-            self.scale_x, self.scale_y = image.width / w, image.height / h
-            self.offset_x = max(24, (cw - image.width) / 2)
-            self.offset_y = 24
-            self.photo = ImageTk.PhotoImage(image)
-            self.canvas.create_rectangle(
-                self.offset_x + 4,
-                28,
-                self.offset_x + image.width + 4,
-                image.height + 28,
-                fill="#cbd3da",
-                outline="",
+            text_font(self.text_entry.get(), Path(path))
+            self.local_font = Path(path)
+            self.status.configure(
+                text=f"Font: {Path(path).name}. Use Check glyphs after changing text."
             )
-            self.canvas.create_image(self.offset_x, 24, image=self.photo, anchor="nw")
-            self.canvas.configure(
-                scrollregion=(0, 0, max(cw, image.width + 48), max(ch, image.height + 48))
-            )
-            self.canvas.xview_moveto(old_x)
-            self.canvas.yview_moveto(old_y)
-            self.zoom_label.configure(text=f"{self.scale_x:.0%}")
         except Exception as exc:
             self.error(exc)
+
+    def check_glyphs(self):
+        try:
+            text_font(self.text_entry.get(), self.local_font)
+            name = self.local_font.name if self.local_font else "Helvetica"
+            self.status.configure(
+                text=f"{name}: glyphs found for the entered text. Complex-script shaping is not verified."
+            )
+        except Exception as exc:
+            self.error(exc)
+
+    def choose_stamp(self):
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Choose a local image stamp",
+            filetypes=[("PNG/JPEG images", "*.png *.jpg *.jpeg")],
+        )
+        if not path:
+            return
+        try:
+            source = Path(path)
+            if source.stat().st_size > RESOURCE_BYTES:
+                raise ValueError("Choose an image no larger than 20 MB.")
+            data = source.read_bytes()
+            image = stamp_image(data)
+            self.stamp_data = data
+            self.stamp_original_size = image.size
+            image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+            self.stamp_preview_image = image
+            self.stamp_label.configure(
+                text=f"{source.name} · {image.width}×{image.height} · drag to place"
+            )
+            self.set_mode("image")
+        except Exception as exc:
+            self.error(exc)
+
+    def preflight_dialog(self):
+        if not self.doc:
+            return
+        try:
+            report = self.doc.export_preflight()
+            messagebox.showinfo(
+                "Export checks",
+                f"{report['pages']} pages · {report['links']} links · "
+                f"{report['forms']} form fields · {report['other_annotations']} other annotations\n\n"
+                + "\n".join(report["warnings"]),
+                parent=self,
+            )
+        except Exception as exc:
+            self.error(exc)
+
+    def save_session_dialog(self):
+        if not self.doc:
+            return False
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Save unencrypted session (PDF, undo history and original filenames)",
+            initialdir=self.path.parent,
+            initialfile=f"{self.path.stem}.forgepdf",
+            defaultextension=".forgepdf",
+            filetypes=[("Forge PDF sessions", "*.forgepdf")],
+            confirmoverwrite=True,
+        )
+        if not path:
+            return False
+        try:
+            save_session(self.doc, Path(path), self.page, self.zoom, overwrite=Path(path).exists())
+            self.status.configure(
+                text="Session saved with bounded Undo history. It is unencrypted; save a PDF copy separately."
+            )
+            return True
+        except Exception as exc:
+            self.error(exc)
+            return False
+
+    def open_session_dialog(self):
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Open an unencrypted editing session",
+            filetypes=[("Forge PDF sessions", "*.forgepdf")],
+        )
+        if not path:
+            return
+        try:
+            candidate, page, zoom = open_session(Path(path))
+            candidate.render(page, 0.2)
+            if not self.discard_ok():
+                return
+            self.doc, self.path, self.page, self.zoom = candidate, Path(path), page, zoom
+            self.fit = False
+            self.local_font = self.stamp_data = None
+            self.view_target = (0, 0)
+            self.refresh()
+            self.status.configure(
+                text="Session reopened. Original files were not loaded. Export an unencrypted PDF copy when ready."
+            )
+        except Exception as exc:
+            self.error(exc)
+
+    def next_match(self, direction=1):
+        if not self.doc or self.search_snapshot != self.doc.data or not self.search_results:
+            self.status.configure(text="Use Find to search the current document first.")
+            return "break"
+        self.search_position = (self.search_position + direction) % len(self.search_results)
+        item = self.search_results[self.search_position]
+        self.search_info.set(
+            f"{self.search_position + 1} of {len(self.search_results)} · page {item['page'] + 1}\n{item['excerpt']}"
+        )
+        self.show_page(item["page"])
+        return "break"
+
+    def find_dialog(self):
+        if not self.doc:
+            return "break"
+        if self.search_window is not None and self.search_window.winfo_exists():
+            self.search_window.lift()
+            return "break"
+        dialog = tk.Toplevel(self)
+        self.search_window = dialog
+        dialog.title("Find document text")
+        dialog.geometry("580x220")
+        dialog.transient(self)
+        ttk.Label(dialog, text="Literal text search · up to 1000 matches · no OCR").pack(
+            padx=12, pady=8
+        )
+        entry = ttk.Entry(dialog)
+        entry.pack(fill="x", padx=12)
+        ttk.Label(dialog, textvariable=self.search_info, wraplength=540).pack(
+            fill="x", padx=12, pady=10
+        )
+        buttons = ttk.Frame(dialog)
+        buttons.pack(fill="x", padx=12)
+
+        def search():
+            if self.search_future is not None and not self.search_future.done():
+                self.search_info.set("The previous search is still finishing.")
+                return
+            snapshot = self.doc.data
+            query = entry.get()
+            self.search_results = []
+            self.search_snapshot = None
+            self.search_position = -1
+            self.search_info.set("Searching…")
+            start.configure(state="disabled")
+            self.search_future = self.search_executor.submit(snapshot, {"query": query})
+            future = self.search_future
+
+            def poll():
+                if self.closing or not dialog.winfo_exists():
+                    return
+                if not future.done():
+                    dialog.after(25, poll)
+                    return
+                start.configure(state="normal")
+                try:
+                    matches = future.result()
+                    if not self.doc or self.doc.data != snapshot:
+                        self.search_info.set("Document changed. Search again.")
+                        return
+                    self.search_results, self.search_snapshot = matches, snapshot
+                    self.search_position = -1
+                    if matches:
+                        self.next_match()
+                    else:
+                        self.search_info.set(
+                            "No matching text. Image-only pages need external OCR."
+                        )
+                except Exception as exc:
+                    self.search_results = []
+                    self.search_info.set(str(exc))
+
+            dialog.after(25, poll)
+
+        start = ttk.Button(buttons, text="Find", command=search)
+        start.pack(side="left")
+        ttk.Button(buttons, text="Previous", command=lambda: self.next_match(-1)).pack(
+            side="left", padx=6
+        )
+        ttk.Button(buttons, text="Next", command=self.next_match).pack(side="left")
+
+        def close_search(event=None):
+            if self.search_future is not None:
+                self.search_future.cancel()
+                self.search_future = None
+            self.search_window = None
+            dialog.destroy()
+            return "break"
+
+        ttk.Button(buttons, text="Close", command=close_search).pack(side="right")
+        dialog.protocol("WM_DELETE_WINDOW", close_search)
+        entry.bind("<Return>", lambda e: search())
+        dialog.bind("<Escape>", close_search)
+        entry.focus_set()
+        return "break"
 
     def point(self, event):
         return (
@@ -697,7 +1057,7 @@ class Editor(tk.Tk):
         )
 
     def press(self, event):
-        if not self.doc:
+        if not self.doc or self.preview_pending:
             return
         self.canvas.focus_set()
         self.cancel_drag()
@@ -716,9 +1076,13 @@ class Editor(tk.Tk):
                     (x, y, x, y),
                     self.text_entry.get(),
                     int(self.font_size.get()),
+                    font_path=self.local_font,
                 )
             )
-        elif self.mode.get() in ("highlight", "whiteout"):
+        elif self.mode.get() in ("highlight", "whiteout", "image"):
+            if self.mode.get() == "image" and self.stamp_data is None:
+                self.status.configure(text="Choose a PNG or JPEG first.")
+                return
             self.drag_start = (x, y)
             self.drag_tool = self.mode.get()
             self.canvas.grab_set()
@@ -727,11 +1091,29 @@ class Editor(tk.Tk):
         if self.drag_start:
             self.canvas.delete("selection")
             x, y = self.drag_start
+            end_x, end_y = self.point(event)
+            page_width, page_height = self.doc.size(self.page)
+            end_x = max(0, min(page_width, end_x))
+            end_y = max(0, min(page_height, end_y))
+            left, top = x * self.scale_x + self.offset_x, y * self.scale_y + self.offset_y
+            x2 = end_x * self.scale_x + self.offset_x
+            y2 = end_y * self.scale_y + self.offset_y
+            if self.drag_tool == "image" and self.stamp_data and x2 != left and y2 != top:
+                width, height = fit_stamp_size(
+                    self.stamp_original_size, abs(x2 - left), abs(y2 - top)
+                )
+                preview = self.stamp_preview_image.resize(
+                    (max(1, round(width)), max(1, round(height))), Image.Resampling.LANCZOS
+                )
+                self.stamp_thumbnail = ImageTk.PhotoImage(preview)
+                self.canvas.create_image(
+                    (left + x2) / 2, (top + y2) / 2, image=self.stamp_thumbnail, tags="selection"
+                )
             self.canvas.create_rectangle(
-                x * self.scale_x + self.offset_x,
-                y * self.scale_y + self.offset_y,
-                self.canvas.canvasx(event.x),
-                self.canvas.canvasy(event.y),
+                left,
+                top,
+                x2,
+                y2,
                 outline="#a97c00",
                 width=2,
                 tags="selection",
@@ -749,7 +1131,27 @@ class Editor(tk.Tk):
         # Capture through mouse-up, and commit exactly once for a real rectangle.
         if abs(start[0] - end[0]) * self.scale_x < 2 or abs(start[1] - end[1]) * self.scale_y < 2:
             return
-        self.change(lambda: self.doc.overlay(self.page, tool, (*start, *end)))
+        if tool == "image":
+            x, x2 = sorted((start[0], end[0]))
+            y, y2 = sorted((start[1], end[1]))
+            self.change(
+                lambda: self.doc.overlay(
+                    self.page, "image", (x, y, x2, y2), image_path=self.stamp_data
+                )
+            )
+        else:
+            self.change(lambda: self.doc.overlay(self.page, tool, (*start, *end)))
+
+    def destroy(self):
+        if not self.closing:
+            self.closing = True
+            for callback in (self.preview_poll, self.pending_resize):
+                if callback:
+                    self.after_cancel(callback)
+            self.preview_request = None
+            self.preview_executor.shutdown(wait=False, cancel_futures=True)
+            self.search_executor.shutdown(wait=False, cancel_futures=True)
+        super().destroy()
 
     def close(self):
         if self.discard_ok():
