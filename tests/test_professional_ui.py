@@ -105,3 +105,23 @@ def test_edit_and_browse_text_notes(tmp_path, monkeypatch):
         assert app.page == 0
     finally:
         app.destroy()
+
+
+def test_review_and_delete_native_highlight(tmp_path):
+    app = Editor()
+    try:
+        app.doc = Document(controls_pdf())
+        app.path = tmp_path / "highlights.pdf"
+        app.doc.add_native_highlight(0, (20, 20, 100, 60))
+        app.refresh()
+        app.set_mode("native_highlight")
+        assert "native PDF highlight" in app.hint.cget("text")
+        app.review_native_highlights()
+        dialog = next(w for w in app.winfo_children() if isinstance(w, tk.Toplevel))
+        listing = next(w for w in dialog.winfo_children() if isinstance(w, tk.Listbox))
+        assert listing.get(0) == "Native highlight 1"
+        listing.selection_set(0)
+        next(w for w in dialog.winfo_children() if w.winfo_class() == "TButton").invoke()
+        assert app.doc.highlight_annotation_count(0) == 0
+    finally:
+        app.destroy()

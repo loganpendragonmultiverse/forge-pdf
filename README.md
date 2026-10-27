@@ -38,6 +38,9 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
   page ranges as one Undoable edit.
 - Use **Edit form fields** to choose supported fields from a list and edit them with
   text, option, or checkbox controls.
+- Use **Page actions → Add native PDF highlight** to drag a real highlight annotation;
+  review or delete native highlights on the current page. The toolbar Highlight tool
+  remains a painted visual mark. Later page-content edits may flatten native annotations.
 - Add a numbered or prefixed page-label range when the source has no custom labels;
   the pages panel displays the resulting labels.
 - Save an AES-256 password-encrypted PDF copy through **Page actions → Save encrypted copy**.

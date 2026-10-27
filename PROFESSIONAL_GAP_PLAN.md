@@ -17,7 +17,8 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
    a field picker. XFA, radio groups, custom checkbox states and signature fields remain
    unsupported.
 2. Edit common document metadata; add and browse bookmarks; add, edit, delete and browse
-   native text notes; rotate page ranges; and add page labels when no custom labels exist.
+   native text notes; add and delete native highlight annotations; rotate page ranges;
+   and add page labels when no custom labels exist.
 3. Search literal text with case and whole-word options and a browsable result list.
 4. Save an AES-256 encrypted copy. Normal Save a copy, rasterized export, recovery snapshots
    and editing sessions remain unencrypted. The password is not persisted by Forge PDF.
@@ -35,7 +36,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | P0 | Crash recovery | Opt-in history-free snapshots and atomic writes are implemented. The current stage marks recovery files, rejects ordinary sessions as recovery destinations, stops updates if a snapshot is replaced, and allows explicit deletion of a selected marked snapshot. Next: corruption/restart UI acceptance and optional user-directed retention policy. No automatic cleanup. |
 | P1 | OCR | Bundled or explicitly installed local engine; selectable language, searchable text layer aligned with rotation/crop, progress/cancel, and bounded resource use. No document upload. |
 | P1 | Full forms | Existing text, simple choice and Yes/Off checkbox fields are supported with a field picker in stages 3–4. Next: complex choice options, custom button states, radio groups and appearance validation in independent viewers. XFA needs a separate decision. |
-| P1 | Annotation editing | Text notes can be edited and browsed across pages. Next: editable native highlights and drawings that survive other page edits without flattening. |
+| P1 | Annotation editing | Text notes can be edited and browsed across pages; native highlight annotations can be added and deleted. Later page-content edits may flatten them. Next: editable highlight geometry/colors and drawings with preservation through other edits. |
 | P1 | Bookmark navigation | Stage 3 adds browsing and page navigation. Next: rename, reorder and delete outline items; preserve destinations during page edits. |
 | P2 | Search | Stage 4 adds case/whole-word options and a browsable result list. Next: position-highlighted glyphs, optional OCR index and measured bounded search over larger files. |
 | P2 | Page tools | Stage 3 adds batch rotate; stage 4 adds a bounded page-label range for documents without existing custom labels. Next: split, editing existing label structures, headers/watermarks and stronger link/bookmark preservation after organization. |

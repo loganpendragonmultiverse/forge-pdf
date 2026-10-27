@@ -12,9 +12,9 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from PIL import ImageDraw
 from pypdf import PdfReader, PdfWriter, Transformation
-from pypdf.annotations import Text as TextNote
+from pypdf.annotations import Highlight as PdfHighlight, Text as TextNote
 from pypdf.constants import PageLabelStyle
-from pypdf.generic import ArrayObject, NameObject, TextStringObject
+from pypdf.generic import ArrayObject, FloatObject, NameObject, TextStringObject
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
@@ -681,6 +681,65 @@ class Document:
         if type(note_index) is not int or not 0 <= note_index < len(positions):
             raise ValueError("Choose a note on this page.")
         del annotations[positions[note_index]]
+        self.commit(writer)
+
+    def add_native_highlight(self, index: int, box: tuple[float, float, float, float]) -> None:
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        if len(box) != 4 or not all(isinstance(v, (int, float)) and math.isfinite(v) for v in box):
+            raise ValueError("Draw a finite highlight rectangle.")
+        x0, x1 = sorted((box[0], box[2]))
+        y0, y1 = sorted((box[1], box[3]))
+        width, height = self.size(index)
+        if not 0 <= x0 < x1 <= width or not 0 <= y0 < y1 <= height:
+            raise ValueError("Draw the complete highlight rectangle inside the visible page.")
+        writer = self.writer()
+        page = writer.pages[index]
+        left, bottom = float(page.cropbox.left), float(page.cropbox.bottom)
+        right, top = float(page.cropbox.right), float(page.cropbox.top)
+        matrices = {
+            0: (1, 0, 0, 1, left, bottom),
+            90: (0, 1, -1, 0, right, bottom),
+            180: (-1, 0, 0, -1, right, top),
+            270: (0, -1, 1, 0, left, top),
+        }
+        a, b, c, d, e, f = matrices[page.rotation % 360]
+        visible = [(x0, height - y0), (x1, height - y0), (x0, height - y1), (x1, height - y1)]
+        points = [(a * x + c * y + e, b * x + d * y + f) for x, y in visible]
+        rect = (
+            min(x for x, _ in points),
+            min(y for _, y in points),
+            max(x for x, _ in points),
+            max(y for _, y in points),
+        )
+        quad = ArrayObject([FloatObject(v) for point in points for v in point])
+        writer.add_annotation(
+            index,
+            PdfHighlight(rect=rect, quad_points=quad, highlight_color="fff176", printing=True),
+        )
+        self.commit(writer)
+
+    def highlight_annotation_count(self, index: int) -> int:
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        return sum(
+            ref.get_object().get("/Subtype") == "/Highlight"
+            for ref in read_pdf(self.data).pages[index].get("/Annots", [])
+        )
+
+    def delete_native_highlight(self, index: int, highlight_index: int) -> None:
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        writer = self.writer()
+        annotations = writer.pages[index].get("/Annots", [])
+        positions = [
+            i
+            for i, ref in enumerate(annotations)
+            if ref.get_object().get("/Subtype") == "/Highlight"
+        ]
+        if type(highlight_index) is not int or not 0 <= highlight_index < len(positions):
+            raise ValueError("Choose a native highlight on this page.")
+        del annotations[positions[highlight_index]]
         self.commit(writer)
 
     def export_preflight(self) -> dict:

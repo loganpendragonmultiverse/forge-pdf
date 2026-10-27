@@ -333,6 +333,10 @@ class Editor(tk.Tk):
         menu.add_command(label="Browse bookmarks…", command=self.browse_bookmarks)
         menu.add_command(label="Review notes on this page…", command=self.review_notes)
         menu.add_command(label="Browse all notes…", command=self.browse_notes)
+        menu.add_command(
+            label="Add native PDF highlight…", command=lambda: self.set_mode("native_highlight")
+        )
+        menu.add_command(label="Review native highlights…", command=self.review_native_highlights)
         menu.add_command(label="Save encrypted copy…", command=self.save_encrypted)
         menu.add_command(
             label="Rasterized redacted export…", command=lambda: self.set_mode("raster_redact")
@@ -799,6 +803,39 @@ class Editor(tk.Tk):
 
         listing.bind("<Double-Button-1>", navigate)
         ttk.Button(dialog, text="Go to selected page", command=navigate).pack(pady=(0, 12))
+
+    def review_native_highlights(self):
+        if not self.doc:
+            return
+        try:
+            count = self.doc.highlight_annotation_count(self.page)
+        except Exception as exc:
+            self.error(exc)
+            return
+        if not count:
+            messagebox.showinfo("Forge PDF", "No native highlights on this page.", parent=self)
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title(f"Native highlights · page {self.page + 1}")
+        dialog.geometry("400x320")
+        listing = tk.Listbox(dialog, exportselection=False)
+        listing.pack(fill="both", expand=True, padx=12, pady=12)
+
+        def populate():
+            listing.delete(0, "end")
+            for number in range(self.doc.highlight_annotation_count(self.page)):
+                listing.insert("end", f"Native highlight {number + 1}")
+
+        def delete_selected():
+            if listing.curselection():
+                index = listing.curselection()[0]
+                self.change(lambda: self.doc.delete_native_highlight(self.page, index))
+                populate()
+
+        populate()
+        ttk.Button(dialog, text="Delete selected highlight", command=delete_selected).pack(
+            pady=(0, 12)
+        )
 
     def rotate_ranges(self):
         if not self.doc:
@@ -1305,6 +1342,7 @@ class Editor(tk.Tk):
                 "highlight": "Drag across an area to highlight it. Highlights do not remove or redact text.",
                 "whiteout": "Drag to cover an area in white. Visual cover only — underlying content can still be extracted.",
                 "note": "Click on the page to add a native text note. Review or delete notes through Page actions.",
+                "native_highlight": "Drag an area to add a native PDF highlight annotation. Later page-content edits may flatten it.",
                 "raster_redact": "Drag an area to black out in a new image-only PDF. Source objects are discarded; current file stays open.",
                 "image": "Choose a PNG/JPEG, then drag a rectangle. The image fits inside it; preview before release.",
             }[self.mode.get()]
@@ -1714,7 +1752,13 @@ class Editor(tk.Tk):
             note = simpledialog.askstring("Add text note", "Note text:", parent=self)
             if note is not None:
                 self.change(lambda: self.doc.add_note(self.page, x, y, note))
-        elif self.mode.get() in ("highlight", "whiteout", "image", "raster_redact"):
+        elif self.mode.get() in (
+            "highlight",
+            "native_highlight",
+            "whiteout",
+            "image",
+            "raster_redact",
+        ):
             if self.mode.get() == "image" and self.stamp_data is None:
                 self.status.configure(text="Choose a PNG or JPEG first.")
                 return
@@ -1768,6 +1812,8 @@ class Editor(tk.Tk):
             return
         if tool == "raster_redact":
             self.export_redacted((*start, *end))
+        elif tool == "native_highlight":
+            self.change(lambda: self.doc.add_native_highlight(self.page, (*start, *end)))
         elif tool == "image":
             x, x2 = sorted((start[0], end[0]))
             y, y2 = sorted((start[1], end[1]))
