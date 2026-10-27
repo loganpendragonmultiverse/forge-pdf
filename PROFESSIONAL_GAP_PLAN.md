@@ -34,7 +34,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | --- | --- | --- |
 | P0 | True redaction | Stage 3 provides a bounded rasterized export: every source page is rebuilt from pixels, the selected rectangle is blacked out, and source objects are absent from the new PDF. This loses text/vector fidelity and does not erase the open source document or old sessions. Next: precise object-preserving redaction, independent viewer/forensic validation and sensitive-copy lifecycle. Never label visual whiteout secure. |
 | P0 | Crash recovery | Opt-in history-free snapshots and atomic writes are implemented. The current stage marks recovery files, rejects ordinary sessions as recovery destinations, stops updates if a snapshot is replaced, and allows explicit deletion of a selected marked snapshot. Next: corruption/restart UI acceptance and optional user-directed retention policy. No automatic cleanup. |
-| P1 | OCR | Stage 5 adds bounded offline English searchable image-copy export with an app-scoped engine. Synthetic scanned text extracts. Next: portable UI acceptance, selectable languages, source-preserving text layers, progress/cancel, and native DLL license inventory. No document upload. |
+| P1 | OCR | Stage 5 adds bounded offline searchable image-copy export with an app-scoped engine. The next stage adds a separate worker, per-page progress, cancellation and selection among installed language files. Synthetic scanned text extracts. Next: source-preserving text layers, independent UI acceptance of the new flow, and native dependency license clearance. No document upload. |
 | P1 | Full forms | Existing text, simple choice and Yes/Off checkbox fields are supported with a field picker in stages 3–4. Next: complex choice options, custom button states, radio groups and appearance validation in independent viewers. XFA needs a separate decision. |
 | P1 | Annotation editing | Text notes can be edited and browsed across pages; native highlight annotations can be added and deleted. Later page-content edits may flatten them. Next: editable highlight geometry/colors and drawings with preservation through other edits. |
 | P1 | Bookmark navigation | Stage 3 adds browsing and page navigation. Next: rename, reorder and delete outline items; preserve destinations during page edits. |
@@ -60,7 +60,7 @@ installer is 26,573,224 bytes (about 26.6 MB decimal). The
 (about 4.1 MB); optional French, German and Spanish models are roughly 1.1, 1.5 and
 2.3 MB respectively. These are asset sizes before final ZIP compression and bundled
 DLL/license accounting. The current OCR review ZIP is about 77.6 MB. English is the
-only bundled language; optional language selection requires further implementation.
+only bundled language; the interface can select another language when its model is supplied.
 Tesseract source and the fast model are Apache-2.0, but that does not establish
 the terms for every installer DLL. The installer is a UB Mannheim build linked
 from upstream Tesseract's Windows package guidance. Retain its provenance and
@@ -68,8 +68,13 @@ verify the notices for each repackaged DLL. Until then, distribute source only;
 users can place their own Tesseract executable, dependencies, English model and
 PDF config under `Support/ocr` in a no-OCR application build.
 
-The approved app-scoped preview passed a synthetic scanned text extraction test. Before
-release, complete native DLL license inventory and add progress/cancel controls. The
+The approved app-scoped preview passed a synthetic scanned text extraction test. The
+new worker implementation adds page progress and cancellation but still needs a new
+portable UI acceptance run. Before release, complete the component/license mapping
+in `OCR_NATIVE_DLL_AUDIT.md`. Existing Visual Studio Build Tools 2022 include MSVC,
+CMake, Ninja and vcpkg, so a task-local source build with pinned registry dependencies
+is a feasible next investigation without a system-wide toolchain install. Do not ship
+that build until every runtime file is mapped to its source and notices. The
 current export is a rasterized searchable image copy, so source PDF structure is lost.
 Keep
 Ghostscript out of the default runtime until a specific export need and licensing review

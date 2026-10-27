@@ -9,7 +9,9 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
+from typing import Callable
 
 import pypdfium2 as pdfium
 from PIL import ImageDraw
@@ -356,7 +358,13 @@ class Document:
         write_copy_bytes(path, output, overwrite=overwrite)
 
     def export_searchable_image_copy(
-        self, path: Path, overwrite: bool = False, ocr_dir: Path | None = None
+        self,
+        path: Path,
+        overwrite: bool = False,
+        ocr_dir: Path | None = None,
+        language: str = "eng",
+        progress: Callable[[int, int], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ) -> None:
         """Create an offline image copy with Tesseract's invisible searchable text.
 
@@ -371,13 +379,19 @@ class Document:
         self.check_destination(path)
         bundle = ocr_dir or Path(sys.executable).resolve().parent / "Support" / "ocr"
         executable = bundle / ("tesseract.exe" if sys.platform == "win32" else "tesseract")
-        trained = bundle / "tessdata" / "eng.traineddata"
+        if not re.fullmatch(r"[a-z0-9_]{2,32}", language):
+            raise ValueError("Choose an installed OCR language code.")
+        trained = bundle / "tessdata" / f"{language}.traineddata"
         if not executable.is_file() or not trained.is_file():
-            raise ValueError("Offline OCR English is unavailable in this build.")
+            raise ValueError(f"Offline OCR language {language} is unavailable in this build.")
         writer = PdfWriter()
+        if progress:
+            progress(0, self.count)
         with tempfile.TemporaryDirectory(prefix="forge-pdf-ocr-") as directory:
             temporary = Path(directory)
             for index in range(self.count):
+                if cancelled and cancelled():
+                    raise ValueError("OCR cancelled.")
                 width, height = self.size(index)
                 if width * height * 4 > 4_000_000:
                     raise ValueError("A page is too large for bounded OCR export.")
@@ -386,14 +400,37 @@ class Document:
                     source = temporary / "page.png"
                     result = temporary / "result"
                     image.save(source, format="PNG")
-                    subprocess.run(
-                        [str(executable), str(source), str(result), "-l", "eng", "pdf"],
-                        check=True,
-                        timeout=120,
-                        capture_output=True,
+                    process = subprocess.Popen(
+                        [str(executable), str(source), str(result), "-l", language, "pdf"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
                         env={**os.environ, "TESSDATA_PREFIX": str(bundle / "tessdata")},
                         cwd=temporary,
                     )
+                    started = time.monotonic()
+                    try:
+                        while True:
+                            if cancelled and cancelled():
+                                raise ValueError("OCR cancelled.")
+                            if time.monotonic() - started > 120:
+                                raise TimeoutError("OCR page exceeded the 120-second limit.")
+                            try:
+                                _, stderr = process.communicate(timeout=0.1)
+                                break
+                            except subprocess.TimeoutExpired:
+                                continue
+                    except BaseException:
+                        process.terminate()
+                        try:
+                            process.communicate(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.communicate()
+                        raise
+                    if process.returncode:
+                        raise ValueError(
+                            f"OCR engine failed on page {index + 1}: {stderr.decode(errors='replace')[:300]}"
+                        )
                     if not result.with_suffix(".pdf").is_file():
                         raise ValueError(
                             "OCR engine did not create a PDF; check its language and PDF configuration files."
@@ -404,8 +441,12 @@ class Document:
                     writer.add_page(reader.pages[0])
                     source.unlink()
                     result.with_suffix(".pdf").unlink()
+                    if progress:
+                        progress(index + 1, self.count)
                 finally:
                     image.close()
+        if cancelled and cancelled():
+            raise ValueError("OCR cancelled.")
         output = serialize(writer)
         if len(output) > MAX_BYTES:
             raise ValueError("OCR output exceeds the 50 MB PDF limit.")

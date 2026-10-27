@@ -47,7 +47,10 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 - Save an AES-256 password-encrypted PDF copy through **Page actions → Save encrypted copy**.
 - Use **Page actions → OCR searchable image copy** in the Windows preview with the
   app-scoped English OCR bundle. It processes up to 20 pages locally and adds an
-  invisible text layer to a new image PDF. Review recognition before sharing.
+  invisible text layer to a new image PDF. This source stage processes pages in
+  a separate worker with progress and Cancel; installed language files can be selected.
+  Review recognition before sharing. The bundled OCR binary remains private review
+  material pending native dependency license clearance.
 - Use **Page actions → Rasterized redacted export** to drag a blacked-out area into a
   new image-only PDF. The export rebuilds every page from rendered pixels and discards
   source text, forms, links, annotations, bookmarks, attachments and metadata.

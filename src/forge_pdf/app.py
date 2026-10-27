@@ -82,6 +82,7 @@ class Editor(tk.Tk):
         self.stamp_preview_image = None
         self.preview_executor = NativeWorker("preview")
         self.search_executor = NativeWorker("search")
+        self.ocr_executor = NativeWorker("ocr")
         self.preview_future = None
         self.preview_request = None
         self.preview_generation = 0
@@ -94,6 +95,7 @@ class Editor(tk.Tk):
         self.search_window = None
         self.search_listbox = None
         self.search_future = None
+        self.ocr_future = None
         self.search_results = []
         self.search_snapshot = None
         self.search_position = -1
@@ -917,9 +919,31 @@ class Editor(tk.Tk):
     def export_ocr(self):
         if not self.doc:
             return False
+        if self.ocr_future is not None and not self.ocr_future.done():
+            self.status.configure(text="An OCR export is already running.")
+            return False
+        bundle = Path(sys.executable).resolve().parent / "Support" / "ocr"
+        languages = sorted(path.stem for path in (bundle / "tessdata").glob("*.traineddata"))
+        if not languages:
+            self.error(ValueError("Offline OCR languages are unavailable in this build."))
+            return False
+        language = languages[0]
+        if len(languages) > 1:
+            choice = simpledialog.askstring(
+                "OCR language",
+                f"Choose an installed language code: {', '.join(languages)}",
+                initialvalue="eng" if "eng" in languages else language,
+                parent=self,
+            )
+            if choice is None:
+                return False
+            language = choice.strip().lower()
+            if language not in languages:
+                self.error(ValueError("Choose one of the installed OCR languages."))
+                return False
         if not messagebox.askyesno(
             "OCR searchable image copy",
-            "Create a new searchable image PDF with offline English OCR? "
+            f"Create a new searchable image PDF with offline {language} OCR? "
             "The current file stays open. The copy loses vector quality, forms, links, "
             "bookmarks, annotations, metadata, accessibility structure and signatures. "
             "It is unencrypted and limited to 20 pages. Check recognized text before sharing.",
@@ -938,18 +962,54 @@ class Editor(tk.Tk):
         if not path:
             return False
         try:
-            self.configure(cursor="watch")
-            self.update_idletasks()
-            self.doc.export_searchable_image_copy(Path(path), overwrite=Path(path).exists())
-            self.status.configure(
-                text=f"OCR copy saved: {path}. Check recognized text before sharing."
+            self.ocr_future = self.ocr_executor.submit(
+                self.doc.data,
+                {"path": path, "overwrite": Path(path).exists(), "language": language},
             )
-            return True
         except Exception as exc:
             self.error(exc)
             return False
-        finally:
-            self.configure(cursor="")
+        future = self.ocr_future
+        dialog = tk.Toplevel(self)
+        dialog.title("Offline OCR progress")
+        dialog.transient(self)
+        progress_text = tk.StringVar(value="Preparing OCR copy...")
+        ttk.Label(dialog, textvariable=progress_text, width=46).pack(padx=18, pady=16)
+
+        def cancel():
+            if future.done():
+                poll()
+                return
+            future.cancel()
+            self.status.configure(
+                text="OCR export cancelled. Check the destination for a completed copy."
+            )
+            dialog.destroy()
+
+        ttk.Button(dialog, text="Cancel OCR", command=cancel).pack(pady=(0, 16))
+        dialog.protocol("WM_DELETE_WINDOW", cancel)
+
+        def poll():
+            if self.closing or not dialog.winfo_exists():
+                return
+            if not future.done():
+                done, total = future.progress
+                progress_text.set(
+                    f"Processed {done} of {total} pages" if total else "Preparing OCR copy..."
+                )
+                dialog.after(100, poll)
+                return
+            dialog.destroy()
+            try:
+                future.result()
+                self.status.configure(
+                    text=f"OCR copy saved: {path}. Check recognized text before sharing."
+                )
+            except Exception as exc:
+                self.error(exc)
+
+        dialog.after(100, poll)
+        return True
 
     def export_redacted(self, box):
         if not messagebox.askyesno(
@@ -1884,6 +1944,7 @@ class Editor(tk.Tk):
             self.preview_request = None
             self.preview_executor.shutdown(wait=False, cancel_futures=True)
             self.search_executor.shutdown(wait=False, cancel_futures=True)
+            self.ocr_executor.shutdown(wait=False, cancel_futures=True)
         super().destroy()
 
     def close(self):
