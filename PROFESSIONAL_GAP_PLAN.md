@@ -59,7 +59,7 @@ installer asset is 26,573,224 bytes (about 26.6 MB decimal). The
 [English traineddata](https://github.com/tesseract-ocr/tessdata_fast) is 4,113,088 bytes
 (about 4.1 MB); optional French, German and Spanish models are roughly 1.1, 1.5 and
 2.3 MB respectively. These are asset sizes before final ZIP compression and bundled
-DLL/license accounting. The current OCR review ZIP is 77,559,819 bytes. English is the
+DLL/license accounting. The current OCR review ZIP is about 77.6 MB. English is the
 only bundled language; optional language selection requires further implementation.
 Both the engine and fast models are Apache-2.0; retain their notices and review licenses
 of every packaged DLL.
