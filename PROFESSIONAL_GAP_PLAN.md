@@ -11,13 +11,21 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 [Foxit OCR](https://www.foxit.com/), [Foxit page organization](https://www.foxit.com/blog/organizing-pdf-documents-lets-you-get-more-out-of-your-content/),
 [PDF-XChange Editor](https://www.pdf-xchange.com/product/downloads).
 
-## Shipped in this proposed change
+## Implemented in draft PR #16
 
-1. Fill existing editable AcroForm text fields with an Undoable edit. This does not create
-   fields or support checkboxes, XFA, or signature fields.
-2. Edit common document metadata and add a bookmark on the current page, both Undoable.
-3. Export an AES-256 encrypted copy with a new password. Normal Save a copy and editing
-   sessions remain unencrypted. The password is not persisted by Forge PDF.
+1. Fill existing editable AcroForm text, simple choice and Yes/Off checkbox fields, with
+   a field picker. XFA, radio groups, custom checkbox states and signature fields remain
+   unsupported.
+2. Edit common document metadata; add and browse bookmarks; add, edit, delete and browse
+   native text notes; rotate page ranges; and add page labels when no custom labels exist.
+3. Search literal text with case and whole-word options and a browsable result list.
+4. Save an AES-256 encrypted copy. Normal Save a copy, rasterized export, recovery snapshots
+   and editing sessions remain unencrypted. The password is not persisted by Forge PDF.
+5. Publish new files atomically and optionally keep a local recovery snapshot without Undo
+   history. A password-opened document cannot enable recovery.
+6. Export a bounded image-only PDF with a selected rectangle blacked out. The PDF is rebuilt
+   from rendered pixels and source objects are discarded. Searchability, accessibility
+   structure and vector fidelity are lost. Original and earlier session copies persist.
 
 ## Next priorities
 
@@ -27,7 +35,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | P0 | Crash recovery | Initial local opt-in snapshots and atomic writes are implemented in stage 2. Next: explicit protected-document policy, corruption/restart UI acceptance, and retention management. |
 | P1 | OCR | Bundled or explicitly installed local engine; selectable language, searchable text layer aligned with rotation/crop, progress/cancel, and bounded resource use. No document upload. |
 | P1 | Full forms | Existing text, simple choice and Yes/Off checkbox fields are supported with a field picker in stages 3–4. Next: complex choice options, custom button states, radio groups and appearance validation in independent viewers. XFA needs a separate decision. |
-| P1 | Annotation editing | Stage 3 adds native text notes with review and deletion. Next: editable native highlights and drawings that survive other page edits without flattening. |
+| P1 | Annotation editing | Text notes can be edited and browsed across pages. Next: editable native highlights and drawings that survive other page edits without flattening. |
 | P1 | Bookmark navigation | Stage 3 adds browsing and page navigation. Next: rename, reorder and delete outline items; preserve destinations during page edits. |
 | P2 | Search | Stage 4 adds case/whole-word options and a browsable result list. Next: position-highlighted glyphs, optional OCR index and measured bounded search over larger files. |
 | P2 | Page tools | Stage 3 adds batch rotate; stage 4 adds a bounded page-label range for documents without existing custom labels. Next: split, editing existing label structures, headers/watermarks and stronger link/bookmark preservation after organization. |
