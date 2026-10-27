@@ -76,7 +76,9 @@ def add_support(destination: Path, ocr_bundle: Path | None = None):
             ocr_bundle / "tessdata" / "configs" / "pdf",
             ocr_target / "tessdata" / "configs" / "pdf",
         )
-        shutil.copy2(ocr_bundle / "doc" / "LICENSE", licenses / "Tesseract-LICENSE.txt")
+        if not (ocr_bundle / "doc" / "LICENSE").is_file():
+            raise ValueError("OCR bundle must include the Tesseract license.")
+        shutil.copytree(ocr_bundle / "doc", licenses / "ocr", dirs_exist_ok=True)
 
 
 def main():
