@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import tkinter as tk
 from pathlib import Path
@@ -30,6 +31,17 @@ INK = "#203340"
 
 class Editor(tk.Tk):
     def __init__(self):
+        # Python's Windows Tcl discovery can intermittently lose tcl_findLibrary
+        # after repeated root creation in one process. Point the development/CI
+        # interpreter at its own bundled script trees; PyInstaller supplies its
+        # separate frozen paths and must keep managing those itself.
+        if sys.platform == "win32" and not getattr(sys, "frozen", False):
+            scripts = Path(sys.base_prefix) / "tcl"
+            for name, folder in (("TCL_LIBRARY", "tcl8.6"), ("TK_LIBRARY", "tk8.6")):
+                if (scripts / folder / "init.tcl").is_file() or (
+                    folder == "tk8.6" and (scripts / folder / "tk.tcl").is_file()
+                ):
+                    os.environ[name] = str(scripts / folder)
         # Windows Tcl/Tk can intermittently fail while locating its script library
         # after another root has closed. Retry that bootstrap failure once; other
         # Tk errors still surface immediately.
