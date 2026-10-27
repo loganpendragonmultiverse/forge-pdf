@@ -34,7 +34,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | --- | --- | --- |
 | P0 | True redaction | Stage 3 provides a bounded rasterized export: every source page is rebuilt from pixels, the selected rectangle is blacked out, and source objects are absent from the new PDF. This loses text/vector fidelity and does not erase the open source document or old sessions. Next: precise object-preserving redaction, independent viewer/forensic validation and sensitive-copy lifecycle. Never label visual whiteout secure. |
 | P0 | Crash recovery | Opt-in history-free snapshots and atomic writes are implemented. The current stage marks recovery files, rejects ordinary sessions as recovery destinations, stops updates if a snapshot is replaced, and allows explicit deletion of a selected marked snapshot. Next: corruption/restart UI acceptance and optional user-directed retention policy. No automatic cleanup. |
-| P1 | OCR | Stage 5 adds bounded offline searchable image-copy export with an app-scoped engine. The next stage adds a separate worker, per-page progress, cancellation and selection among installed language files. Synthetic scanned text extracts. Next: source-preserving text layers, independent UI acceptance of the new flow, and native dependency license clearance. No document upload. |
+| P1 | OCR | Bounded offline searchable image-copy export, separate worker, per-page progress, cancellation and selection among installed language files are implemented. The source-built private preview passed synthetic OCR and a visible Windows export. Next: source-preserving text layers and redistribution/compatibility gates. No document upload. |
 | P1 | Full forms | Existing text, simple choice and Yes/Off checkbox fields are supported with a field picker in stages 3–4. Next: complex choice options, custom button states, radio groups and appearance validation in independent viewers. XFA needs a separate decision. |
 | P1 | Annotation editing | Text notes can be edited and browsed across pages; native highlight annotations can be added and deleted. Later page-content edits may flatten them. Next: editable highlight geometry/colors and drawings with preservation through other edits. |
 | P1 | Bookmark navigation | Stage 3 adds browsing and page navigation. Next: rename, reorder and delete outline items; preserve destinations during page edits. |
@@ -46,36 +46,60 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 Digital signature validation needs a separate trust-store and revocation design. A visual
 image stamp is not a digital signature. No change here claims signature validation.
 
-## Offline OCR dependency decision
+## OCR distribution and measured compatibility
 
-The approved review preview contains an app-scoped Tesseract engine and English model.
-It does not install Tesseract system-wide. Tesseract is [Apache-2.0 licensed](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE).
-[OCRmyPDF's Windows instructions](https://ocrmypdf.readthedocs.io/en/latest/installation.html)
-call for a separate Tesseract installation and recommend Ghostscript for some PDF/A flows.
-Recommendation: use the [UB Mannheim Tesseract 5.5.3 Windows installer](https://github.com/UB-Mannheim/tesseract/wiki)
-as an app-scoped engine with its required runtime DLLs and `tessdata_fast` English model,
-rather than requiring a machine-wide third-party installation. The official Windows
-installer is 26,573,224 bytes (about 26.6 MB decimal). The
-[English traineddata](https://github.com/tesseract-ocr/tessdata_fast) is 4,113,088 bytes
-(about 4.1 MB); optional French, German and Spanish models are roughly 1.1, 1.5 and
-2.3 MB respectively. These are asset sizes before final ZIP compression and bundled
-DLL/license accounting. The current OCR review ZIP is about 77.6 MB. English is the
-only bundled language; the interface can select another language when its model is supplied.
-Tesseract source and the fast model are Apache-2.0, but that does not establish
-the terms for every installer DLL. The installer is a UB Mannheim build linked
-from upstream Tesseract's Windows package guidance. Retain its provenance and
-verify the notices for each repackaged DLL. Until then, distribute source only;
-users can place their own Tesseract executable, dependencies, English model and
-PDF config under `Support/ocr` in a no-OCR application build.
+The private review preview now uses an app-scoped Tesseract 5.5.3 executable
+compiled from the official tag with pinned static vcpkg dependencies. It
+bundles English from tessdata_fast, the PDF config and component notices.
+`OCR_SOURCE_BUILD_AUDIT.md` records commits, versions, hashes and imports.
+The 55-DLL installer-derived preview is superseded and must remain private.
 
-The approved app-scoped preview passed a synthetic scanned text extraction test. The
-new worker implementation adds page progress and cancellation but still needs a new
-portable UI acceptance run. Before release, complete the component/license mapping
-in `OCR_NATIVE_DLL_AUDIT.md`. Existing Visual Studio Build Tools 2022 include MSVC,
-CMake, Ninja and vcpkg, so a task-local source build with pinned registry dependencies
-is a feasible next investigation without a system-wide toolchain install. Do not ship
-that build until every runtime file is mapped to its source and notices. The
-current export is a rasterized searchable image copy, so source PDF structure is lost.
-Keep
-Ghostscript out of the default runtime until a specific export need and licensing review
-justify it. No PDF content should be sent to a remote OCR service.
+The exact 41,576,256-byte source-built ZIP was extracted and launched on
+Windows 11 25H2, build 26200, x64. The GUI opened a synthetic scan, displayed
+the information-loss warning and progress, saved a copy, and the copy
+extracted the expected text. The source scan matched the pre-test review
+fixture hash afterward. Five OCR tests passed against the exact ZIP's engine.
+GitHub Actions tested the Python app on Windows Server 2025 `windows-latest` runners with
+Python 3.11 and 3.14; those jobs do not exercise the bundled OCR executable.
+No Windows on ARM, Windows 10 or older Windows 11 build has been accepted.
+
+Release gates: independently review every redistributed notice and source
+receipt; exercise a clean x64 Windows machine and supported Windows versions;
+rerun exact artifact security and UI acceptance; then obtain release approval.
+Normal release builds reject `--ocr-bundle` until that gate is changed
+deliberately.
+
+## Remaining architecture stages
+
+1. **Source-preserving OCR:** generate invisible text with coordinates from
+   Tesseract output and overlay it on copies of source pages. Preserve source
+   vectors, links, bookmarks and annotations where possible; warn when a
+   digital signature would be invalidated. The existing pypdf/ReportLab stack
+   is the first candidate, but rotations, crop boxes, deskew, mixed text and
+   reading order need independent-viewer tests. Keep the current rasterized
+   path available for cases that fail those gates. No cloud OCR.
+2. **Richer forms:** extend AcroForm handling with radio groups, custom button
+   states, multi-select choice options and appearance streams. Validate values
+   and rendering in independent PDF viewers. XFA is a separate architecture
+   decision because pypdf does not provide a complete XFA editing engine.
+3. **Accessible output:** define a semantic document model, reading order,
+   language and alt-text editor before writing tags. Test against a PDF/UA
+   validator and screen readers; do not equate a searchable OCR layer with
+   accessible structure. This may require a new writer library or a substantial
+   extension to the existing output pipeline. Audit license compatibility
+   before adding a runtime dependency.
+4. **Native redaction:** evaluate a proven content-rewriting engine that
+   removes selected text, image pixels, hidden layers and metadata as
+   required, then test with extraction, object inspection and multiple
+   viewers. The current pypdf/ReportLab overlay path cannot establish that
+   guarantee. Preserve the image-only rasterized export as the bounded
+   sensitive-copy option until a native engine passes those tests. Do not
+   introduce a copyleft or commercial runtime into this MIT application
+   without an explicit license/architecture decision.
+5. **Scale and recovery:** measure memory, rendering latency and restart
+   behavior on synthetic large files before increasing the 50 MB/500-page
+   limits. Keep recovery cleanup user-controlled and test corrupt snapshots.
+
+The stages above are plans, not implemented features. Signature validation
+also requires a separate trust-store and revocation design. A visual stamp
+does not establish a digital signature.

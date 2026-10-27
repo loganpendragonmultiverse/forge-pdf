@@ -14,6 +14,30 @@ ROOT = Path(__file__).resolve().parents[1]
 ENGLISH_SHA256 = "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
 
 
+def verify_ocr_notices(ocr_bundle: Path) -> None:
+    required = [
+        "LICENSE",
+        "tessdata_fast-LICENSE.txt",
+        *(
+            f"dependencies/{name}.txt"
+            for name in (
+                "giflib",
+                "leptonica",
+                "libjpeg-turbo",
+                "liblzma",
+                "libpng",
+                "libwebp",
+                "openjpeg",
+                "tiff",
+                "zlib",
+            )
+        ),
+    ]
+    missing = [name for name in required if not (ocr_bundle / "doc" / name).is_file()]
+    if missing:
+        raise ValueError(f"OCR bundle is missing required notices: {', '.join(missing)}")
+
+
 def add_support(destination: Path, ocr_bundle: Path | None = None):
     support = destination / "Support"
     support.mkdir(exist_ok=True)
@@ -21,6 +45,7 @@ def add_support(destination: Path, ocr_bundle: Path | None = None):
         "README.md",
         "LICENSE",
         "THIRD_PARTY_NOTICES.md",
+        "OCR_SOURCE_BUILD_AUDIT.md",
         "SECURITY.md",
         "TESTING.md",
         "DEVELOPMENT.md",
@@ -76,8 +101,7 @@ def add_support(destination: Path, ocr_bundle: Path | None = None):
             ocr_bundle / "tessdata" / "configs" / "pdf",
             ocr_target / "tessdata" / "configs" / "pdf",
         )
-        if not (ocr_bundle / "doc" / "LICENSE").is_file():
-            raise ValueError("OCR bundle must include the Tesseract license.")
+        verify_ocr_notices(ocr_bundle)
         shutil.copytree(ocr_bundle / "doc", licenses / "ocr", dirs_exist_ok=True)
 
 
