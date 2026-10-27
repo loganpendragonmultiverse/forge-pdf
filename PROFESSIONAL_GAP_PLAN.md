@@ -52,17 +52,21 @@ The approved review preview contains an app-scoped Tesseract engine and English 
 It does not install Tesseract system-wide. Tesseract is [Apache-2.0 licensed](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE).
 [OCRmyPDF's Windows instructions](https://ocrmypdf.readthedocs.io/en/latest/installation.html)
 call for a separate Tesseract installation and recommend Ghostscript for some PDF/A flows.
-Recommendation: use the [official Tesseract 5.5.3 Windows release](https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.3)
+Recommendation: use the [UB Mannheim Tesseract 5.5.3 Windows installer](https://github.com/UB-Mannheim/tesseract/wiki)
 as an app-scoped engine with its required runtime DLLs and `tessdata_fast` English model,
 rather than requiring a machine-wide third-party installation. The official Windows
-installer asset is 26,573,224 bytes (about 26.6 MB decimal). The
+installer is 26,573,224 bytes (about 26.6 MB decimal). The
 [English traineddata](https://github.com/tesseract-ocr/tessdata_fast) is 4,113,088 bytes
 (about 4.1 MB); optional French, German and Spanish models are roughly 1.1, 1.5 and
 2.3 MB respectively. These are asset sizes before final ZIP compression and bundled
 DLL/license accounting. The current OCR review ZIP is about 77.6 MB. English is the
 only bundled language; optional language selection requires further implementation.
-Both the engine and fast models are Apache-2.0; retain their notices and review licenses
-of every packaged DLL.
+Tesseract source and the fast model are Apache-2.0, but that does not establish
+the terms for every installer DLL. The installer is a UB Mannheim build linked
+from upstream Tesseract's Windows package guidance. Retain its provenance and
+verify the notices for each repackaged DLL. Until then, distribute source only;
+users can place their own Tesseract executable, dependencies, English model and
+PDF config under `Support/ocr` in a no-OCR application build.
 
 The approved app-scoped preview passed a synthetic scanned text extraction test. Before
 release, complete native DLL license inventory and add progress/cancel controls. The

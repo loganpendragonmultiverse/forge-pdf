@@ -21,10 +21,12 @@ must accompany any later binary distribution. Development tools are not applicat
 
 Optional offline OCR preview bundle:
 
-- Tesseract 5.5.3 Windows engine: Apache-2.0,
-  https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.3
+- Tesseract 5.5.3 source: Apache-2.0. The reviewed Windows executable and DLLs
+  were extracted from UB Mannheim's 5.5.3.20260724 installer, linked from
+  upstream package guidance: https://github.com/UB-Mannheim/tesseract/wiki
 - English `tessdata_fast` trained model: Apache-2.0,
   https://github.com/tesseract-ocr/tessdata_fast
 - The extracted Windows engine also contains Leptonica, ICU, and other native DLLs with
   their own licenses. Inventory and include every required dependency notice before any
-  public binary release. The current local OCR bundle is a review preview only.
+  public binary release. Normal release builds reject `--ocr-bundle` until this
+  inventory is complete. The current local OCR bundle is a private review preview only.
