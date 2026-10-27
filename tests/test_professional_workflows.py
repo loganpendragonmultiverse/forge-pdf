@@ -115,6 +115,15 @@ def test_native_notes_survive_reopen_and_can_be_deleted(rotation, tmp_path):
         270: (316, 416, 340, 440),
     }
     assert tuple(float(value) for value in note["/Rect"]) == expected[rotation]
+    assert doc.all_notes() == [{"page": 0, "index": 0, "text": "Review this line"}]
+    doc.update_note(0, 0, "Revised note")
+    assert doc.notes(0) == ["Revised note"]
+    doc.undo()
+    assert doc.notes(0) == ["Review this line"]
+    with pytest.raises(ValueError, match="note text"):
+        doc.update_note(0, 0, " ")
+    with pytest.raises(ValueError, match="Choose a note"):
+        doc.update_note(0, 1, "Other")
     target = tmp_path / f"note-{rotation}.pdf"
     doc.save_copy(target)
     assert Document.open(target).notes(0) == ["Review this line"]

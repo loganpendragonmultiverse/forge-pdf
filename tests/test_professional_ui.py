@@ -78,3 +78,30 @@ def test_rasterized_redacted_export_dialog(tmp_path, monkeypatch):
         assert not PdfReader(target).get_fields()
     finally:
         app.destroy()
+
+
+def test_edit_and_browse_text_notes(tmp_path, monkeypatch):
+    app = Editor()
+    try:
+        app.doc = Document(controls_pdf())
+        app.path = tmp_path / "notes.pdf"
+        app.doc.add_note(0, 40, 40, "First note")
+        app.refresh()
+        monkeypatch.setattr("forge_pdf.app.simpledialog.askstring", lambda *a, **kw: "Revised")
+        app.review_notes()
+        dialog = next(w for w in app.winfo_children() if isinstance(w, tk.Toplevel))
+        listing = next(w for w in dialog.winfo_children() if isinstance(w, tk.Listbox))
+        listing.selection_set(0)
+        buttons = [w for w in dialog.winfo_children() if w.winfo_class() == "TButton"]
+        next(w for w in buttons if w.cget("text") == "Edit selected note").invoke()
+        assert app.doc.notes(0) == ["Revised"]
+        dialog.destroy()
+        app.browse_notes()
+        dialog = next(w for w in app.winfo_children() if isinstance(w, tk.Toplevel))
+        listing = next(w for w in dialog.winfo_children() if isinstance(w, tk.Listbox))
+        assert listing.get(0).startswith("Page 1: Revised")
+        listing.selection_set(0)
+        next(w for w in dialog.winfo_children() if w.winfo_class() == "TButton").invoke()
+        assert app.page == 0
+    finally:
+        app.destroy()

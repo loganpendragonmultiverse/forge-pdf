@@ -331,6 +331,7 @@ class Editor(tk.Tk):
         menu.add_command(label="Add bookmark for this page…", command=self.bookmark_dialog)
         menu.add_command(label="Browse bookmarks…", command=self.browse_bookmarks)
         menu.add_command(label="Review notes on this page…", command=self.review_notes)
+        menu.add_command(label="Browse all notes…", command=self.browse_notes)
         menu.add_command(label="Save encrypted copy…", command=self.save_encrypted)
         menu.add_command(
             label="Rasterized redacted export…", command=lambda: self.set_mode("raster_redact")
@@ -752,8 +753,51 @@ class Editor(tk.Tk):
                 self.change(lambda: self.doc.delete_note(self.page, index))
                 populate()
 
+        def edit_selected():
+            if not listing.curselection():
+                return
+            index = listing.curselection()[0]
+            current = self.doc.notes(self.page)[index]
+            revised = simpledialog.askstring(
+                "Edit text note", "Note text:", initialvalue=current, parent=dialog
+            )
+            if revised is None:
+                return
+            self.change(lambda: self.doc.update_note(self.page, index, revised))
+            populate()
+            listing.selection_set(index)
+
         populate()
+        ttk.Button(dialog, text="Edit selected note", command=edit_selected).pack(pady=(0, 8))
         ttk.Button(dialog, text="Delete selected note", command=delete_selected).pack(pady=(0, 12))
+
+    def browse_notes(self):
+        if not self.doc:
+            return
+        try:
+            notes = self.doc.all_notes()
+        except Exception as exc:
+            self.error(exc)
+            return
+        if not notes:
+            messagebox.showinfo("Forge PDF", "No text notes in this PDF.", parent=self)
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title("Document text notes")
+        dialog.geometry("560x360")
+        listing = tk.Listbox(dialog, exportselection=False)
+        listing.pack(fill="both", expand=True, padx=12, pady=12)
+        for note in notes:
+            excerpt = note["text"].replace("\n", " ")[:160]
+            listing.insert("end", f"Page {note['page'] + 1}: {excerpt}")
+
+        def navigate(event=None):
+            if listing.curselection():
+                self.show_page(notes[listing.curselection()[0]]["page"])
+                dialog.destroy()
+
+        listing.bind("<Double-Button-1>", navigate)
+        ttk.Button(dialog, text="Go to selected page", command=navigate).pack(pady=(0, 12))
 
     def rotate_ranges(self):
         if not self.doc:

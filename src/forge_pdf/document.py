@@ -14,7 +14,7 @@ from PIL import ImageDraw
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf.annotations import Text as TextNote
 from pypdf.constants import PageLabelStyle
-from pypdf.generic import ArrayObject, NameObject
+from pypdf.generic import ArrayObject, NameObject, TextStringObject
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
@@ -607,6 +607,40 @@ class Document:
             for ref in page.get("/Annots", [])
             if ref.get_object().get("/Subtype") == "/Text"
         ]
+
+    def all_notes(self) -> list[dict]:
+        reader = read_pdf(self.data)
+        result = []
+        for page_index, page in enumerate(reader.pages):
+            note_index = 0
+            for ref in page.get("/Annots", []):
+                note = ref.get_object()
+                if note.get("/Subtype") == "/Text":
+                    result.append(
+                        {
+                            "page": page_index,
+                            "index": note_index,
+                            "text": str(note.get("/Contents", "")),
+                        }
+                    )
+                    note_index += 1
+        return result
+
+    def update_note(self, index: int, note_index: int, text: str) -> None:
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        if not isinstance(text, str) or not text.strip() or len(text) > 2000:
+            raise ValueError("Enter note text up to 2,000 characters.")
+        writer = self.writer()
+        notes = [
+            ref.get_object()
+            for ref in writer.pages[index].get("/Annots", [])
+            if ref.get_object().get("/Subtype") == "/Text"
+        ]
+        if type(note_index) is not int or not 0 <= note_index < len(notes):
+            raise ValueError("Choose a note on this page.")
+        notes[note_index][NameObject("/Contents")] = TextStringObject(text.strip())
+        self.commit(writer)
 
     def add_note(self, index: int, x: float, y: float, text: str) -> None:
         if type(index) is not int or not 0 <= index < self.count:

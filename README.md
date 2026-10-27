@@ -34,7 +34,8 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 - Review an export summary of pages, links, form fields and annotations before sharing.
 - Fill existing editable text form fields, edit title/author/subject/keywords, and add a bookmark for the current page.
 - Fill simple choice fields and Yes/Off checkboxes; browse bookmarks; add and delete native
-  text notes. Rotate selected page ranges as one Undoable edit.
+  text notes. Edit existing text notes and browse notes across the document. Rotate selected
+  page ranges as one Undoable edit.
 - Use **Edit form fields** to choose supported fields from a list and edit them with
   text, option, or checkbox controls.
 - Add a numbered or prefixed page-label range when the source has no custom labels;
