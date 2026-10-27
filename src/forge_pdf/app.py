@@ -14,6 +14,7 @@ from .document import Document, parse_page_ranges
 from .workers import NativeWorker
 from .enhancements import (
     fit_stamp_size,
+    is_recovery_snapshot,
     open_session,
     save_session,
     stamp_image,
@@ -172,7 +173,7 @@ class Editor(tk.Tk):
         session_menu.add_command(label="Enable local recovery…", command=self.enable_recovery)
         session_menu.add_command(label="Stop local recovery", command=self.stop_recovery)
         session_menu.add_command(
-            label="Delete local recovery snapshot…", command=self.delete_recovery
+            label="Delete a local recovery snapshot…", command=self.delete_recovery
         )
         session.configure(menu=session_menu)
         session.pack(side="right", padx=8)
@@ -921,6 +922,9 @@ class Editor(tk.Tk):
         if not self.recovery_path or not self.doc or self.closing:
             return
         try:
+            if not is_recovery_snapshot(self.recovery_path):
+                self.stop_recovery()
+                raise ValueError("Recovery file is missing or changed; updates stopped.")
             save_session(
                 self.doc,
                 self.recovery_path,
@@ -928,6 +932,7 @@ class Editor(tk.Tk):
                 self.zoom,
                 overwrite=self.recovery_path.exists(),
                 include_history=False,
+                recovery=True,
             )
             self.status.configure(text=f"Local recovery snapshot updated: {self.recovery_path}")
         except Exception as exc:
@@ -963,6 +968,8 @@ class Editor(tk.Tk):
             return False
         try:
             candidate = Path(path).resolve()
+            if candidate.exists() and not is_recovery_snapshot(candidate):
+                raise ValueError("Choose a new file or an existing Forge PDF recovery snapshot.")
             save_session(
                 self.doc,
                 candidate,
@@ -970,6 +977,7 @@ class Editor(tk.Tk):
                 self.zoom,
                 overwrite=candidate.exists(),
                 include_history=False,
+                recovery=True,
             )
             self.stop_recovery()
             self.recovery_path = candidate
@@ -986,19 +994,41 @@ class Editor(tk.Tk):
         self.recovery_path = None
 
     def delete_recovery(self):
-        if not self.recovery_path:
-            messagebox.showinfo("Forge PDF", "No active recovery snapshot.", parent=self)
-            return
         path = self.recovery_path
-        if messagebox.askyesno(
-            "Delete local recovery", f"Stop recovery and delete this snapshot?\n{path}", parent=self
-        ):
-            try:
-                path.unlink(missing_ok=True)
+        if path is None:
+            chosen = filedialog.askopenfilename(
+                parent=self,
+                title="Choose a Forge PDF recovery snapshot to delete",
+                filetypes=[("Forge PDF sessions", "*.forgepdf")],
+            )
+            if not chosen:
+                return False
+            path = Path(chosen)
+        try:
+            if not is_recovery_snapshot(path):
+                raise ValueError("Choose a recovery snapshot created by Forge PDF.")
+            original = path.stat()
+            if not messagebox.askyesno(
+                "Delete local recovery",
+                f"Permanently delete this unencrypted recovery snapshot?\n{path}",
+                parent=self,
+            ):
+                return False
+            current = path.stat()
+
+            def identity(stat):
+                return (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+
+            if path.is_symlink() or identity(current) != identity(original):
+                raise ValueError("Recovery snapshot changed before deletion; choose it again.")
+            path.unlink()
+            if self.recovery_path == path:
                 self.stop_recovery()
-                self.status.configure(text="Local recovery snapshot deleted.")
-            except Exception as exc:
-                self.error(exc)
+            self.status.configure(text="Local recovery snapshot deleted.")
+            return True
+        except Exception as exc:
+            self.error(exc)
+            return False
 
     def rotate(self):
         self.change(lambda: self.doc.rotate(self.page))

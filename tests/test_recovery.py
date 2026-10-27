@@ -8,7 +8,7 @@ from pypdf import PdfWriter
 from reportlab.pdfgen.canvas import Canvas
 
 from forge_pdf.document import Document, write_copy_bytes
-from forge_pdf.enhancements import open_session, save_session
+from forge_pdf.enhancements import is_recovery_snapshot, open_session, save_session
 
 
 def fixture_pdf():
@@ -72,3 +72,16 @@ def test_password_opened_document_is_identified(tmp_path):
     with source.open("wb") as output:
         writer.write(output)
     assert Document.open(source, "synthetic-password").opened_encrypted
+
+
+def test_only_marked_history_free_sessions_are_recovery_snapshots(tmp_path):
+    doc = Document(fixture_pdf())
+    ordinary = tmp_path / "ordinary.forgepdf"
+    recovery = tmp_path / "recovery.forgepdf"
+    save_session(doc, ordinary, 0, 1.0, include_history=False)
+    save_session(doc, recovery, 0, 1.0, include_history=False, recovery=True)
+    assert not is_recovery_snapshot(ordinary)
+    assert is_recovery_snapshot(recovery)
+    assert open_session(recovery)[0].data == doc.data
+    with pytest.raises(ValueError, match="cannot include Undo"):
+        save_session(doc, tmp_path / "bad.forgepdf", 0, 1.0, recovery=True)

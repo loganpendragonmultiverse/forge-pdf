@@ -87,8 +87,11 @@ files. Save an edited PDF separately; saving a session does not mark a PDF copy 
 For opt-in recovery, choose **Session → Enable local recovery** and a local `.forgepdf`
 destination. Forge PDF writes the current document there after edits, with a short idle
 delay and without Undo snapshots. Open it using **Open editing session** after a crash.
-**Stop local recovery** stops updates but keeps the file; **Delete local recovery snapshot**
-stops updates and removes it. Recovery files are unencrypted, include original filenames,
+**Stop local recovery** stops updates but keeps the file. **Delete a local recovery snapshot**
+can remove the active snapshot or one you explicitly choose later, after confirmation.
+Forge PDF accepts only snapshots marked as recovery by this version for that command;
+ordinary editing sessions and older unmarked recovery files must be managed separately.
+Recovery files are unencrypted, include original filenames,
 and remain on disk until deleted. Recovery is unavailable for password-opened PDFs;
 do not enable it for other sensitive documents.
 There is no default autosave, account connection or network upload.
