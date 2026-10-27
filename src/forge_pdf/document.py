@@ -10,7 +10,10 @@ import tempfile
 from pathlib import Path
 
 import pypdfium2 as pdfium
+from PIL import ImageDraw
 from pypdf import PdfReader, PdfWriter, Transformation
+from pypdf.annotations import Text as TextNote
+from pypdf.constants import PageLabelStyle
 from pypdf.generic import ArrayObject, NameObject
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.utils import ImageReader
@@ -64,6 +67,7 @@ class Document:
         read_pdf(data)
         self.data = data
         self.saved = data
+        self.opened_encrypted = False
         self.sources = {source.resolve()} if source else set()
         self.source_identities = set()
         if source and source.exists():
@@ -78,11 +82,14 @@ class Document:
             raise ValueError("Forge PDF supports PDFs up to 50 MB.")
         data = path.read_bytes()
         reader = PdfReader(io.BytesIO(data))
-        if reader.is_encrypted:
+        encrypted = reader.is_encrypted
+        if encrypted:
             if not reader.decrypt(password or ""):
                 raise ValueError("Password required or incorrect password.")
             data = serialize(PdfWriter(clone_from=reader))
-        return cls(data, path)
+        document = cls(data, path)
+        document.opened_encrypted = encrypted
+        return document
 
     @property
     def count(self) -> int:
@@ -117,6 +124,57 @@ class Document:
     def rotate(self, index: int, degrees: int = 90) -> None:
         writer = self.writer()
         writer.pages[index].rotate(degrees)
+        self.commit(writer)
+
+    def rotate_pages(self, indices: list[int], degrees: int = 90) -> None:
+        if degrees not in (-90, 90, 180) or not indices or len(set(indices)) != len(indices):
+            raise ValueError("Select distinct pages and a 90 or 180 degree rotation.")
+        if any(type(index) is not int or not 0 <= index < self.count for index in indices):
+            raise ValueError("Choose pages in this document.")
+        writer = self.writer()
+        for index in indices:
+            writer.pages[index].rotate(degrees)
+        self.commit(writer)
+
+    def page_labels(self) -> list[str]:
+        return list(read_pdf(self.data).page_labels)
+
+    def set_page_labels(
+        self,
+        first: int,
+        last: int,
+        prefix: str = "",
+        style: str = "decimal",
+        start: int = 1,
+    ) -> None:
+        styles = {
+            "decimal": PageLabelStyle.DECIMAL,
+            "roman": PageLabelStyle.LOWERCASE_ROMAN,
+            "letters": PageLabelStyle.UPPERCASE_LETTER,
+        }
+        if (
+            type(first) is not int
+            or type(last) is not int
+            or not 0 <= first <= last < self.count
+            or not isinstance(prefix, str)
+            or len(prefix) > 100
+            or style not in styles
+            or type(start) is not int
+            or not 1 <= start <= 100000
+        ):
+            raise ValueError("Choose valid pages, prefix, style and starting number.")
+        if read_pdf(self.data).trailer["/Root"].get("/PageLabels") is not None:
+            raise ValueError("Editing existing custom page labels is not supported yet.")
+        writer = self.writer()
+        writer.set_page_label(first, last, style=styles[style], prefix=prefix, start=start)
+        if last + 1 < self.count:
+            writer.set_page_label(
+                last + 1,
+                self.count - 1,
+                style=PageLabelStyle.DECIMAL,
+                prefix="",
+                start=last + 2,
+            )
         self.commit(writer)
 
     def delete(self, index: int) -> None:
@@ -239,6 +297,62 @@ class Document:
         extracted.source_identities = self.source_identities.copy()
         extracted.save_copy(path, overwrite=overwrite)
 
+    def export_raster_redacted(
+        self,
+        index: int,
+        box: tuple[float, float, float, float],
+        path: Path,
+        overwrite: bool = False,
+    ) -> None:
+        """Rebuild every page from rendered pixels, blacking a selected visible area.
+
+        This discards all source PDF objects, including searchable text, forms,
+        annotations, links, outlines, metadata, attachments, and signatures.
+        """
+        if self.count > 20:
+            raise ValueError("Rasterized redacted export supports up to 20 pages.")
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        if len(box) != 4 or not all(isinstance(v, (int, float)) and math.isfinite(v) for v in box):
+            raise ValueError("Choose a finite redaction rectangle.")
+        left, right = sorted((box[0], box[2]))
+        top, bottom = sorted((box[1], box[3]))
+        width, height = self.size(index)
+        if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+            raise ValueError("Draw the complete redaction rectangle inside the visible page.")
+        path = path.resolve()
+        if path.suffix.lower() != ".pdf":
+            raise ValueError("Save the document with a .pdf extension.")
+        self.check_destination(path)
+        stream = io.BytesIO()
+        canvas = Canvas(stream, pagesize=(width, height), pageCompression=1)
+        for number in range(self.count):
+            page_width, page_height = self.size(number)
+            if page_width * page_height * 4 > 4_000_000:
+                raise ValueError("A page is too large for bounded rasterized export.")
+            image = self.render(number, scale=2.0)
+            if number == index:
+                sx, sy = image.width / page_width, image.height / page_height
+                draw = ImageDraw.Draw(image)
+                draw.rectangle(
+                    (
+                        math.floor(left * sx),
+                        math.floor(top * sy),
+                        math.ceil(right * sx),
+                        math.ceil(bottom * sy),
+                    ),
+                    fill=(0, 0, 0),
+                )
+            canvas.setPageSize((page_width, page_height))
+            canvas.drawImage(ImageReader(image), 0, 0, page_width, page_height)
+            canvas.showPage()
+            image.close()
+        canvas.save()
+        output = stream.getvalue()
+        if len(output) > MAX_BYTES:
+            raise ValueError("Rasterized output exceeds the 50 MB PDF limit.")
+        write_copy_bytes(path, output, overwrite=overwrite)
+
     def clear_footer(self, pixels: int = 5) -> None:
         if not isinstance(pixels, int) or isinstance(pixels, bool) or not 1 <= pixels <= 10000:
             raise ValueError("Enter a footer height from 1 to 10000 pixels.")
@@ -334,24 +448,206 @@ class Document:
         page.merge_transformed_page(PdfReader(stream).pages[0], Transformation(matrices[rotation]))
         self.commit(writer)
 
-    def search(self, query: str, limit: int = 1000) -> list[dict]:
-        """Literal case-insensitive text search; image-only pages require external OCR."""
+    def search(
+        self,
+        query: str,
+        limit: int = 1000,
+        case_sensitive: bool = False,
+        whole_word: bool = False,
+    ) -> list[dict]:
+        """Bounded literal text search; image-only pages require external OCR."""
         if not isinstance(query, str) or not query.strip() or len(query) > 256:
             raise ValueError("Enter 1 to 256 search characters.")
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise ValueError("Search results are limited to 1 through 1000 matches.")
+        if type(case_sensitive) is not bool or type(whole_word) is not bool:
+            raise ValueError("Search options must be enabled or disabled.")
         matches = []
-        pattern = re.compile(re.escape(query), re.IGNORECASE)
+        literal = re.escape(query)
+        if whole_word:
+            literal = rf"(?<!\w){literal}(?!\w)"
+        pattern = re.compile(literal, 0 if case_sensitive else re.IGNORECASE)
         for index, page in enumerate(read_pdf(self.data).pages):
             text = page.extract_text() or ""
             if len(text) > 2_000_000:
                 raise ValueError("This page has too much extracted text for bounded search.")
             for match in pattern.finditer(text):
                 excerpt = text[max(0, match.start() - 35) : match.end() + 60]
-                matches.append({"page": index, "excerpt": " ".join(excerpt.split())})
+                matches.append(
+                    {
+                        "page": index,
+                        "excerpt": " ".join(excerpt.split()),
+                        "start": match.start(),
+                        "end": match.end(),
+                    }
+                )
                 if len(matches) >= limit:
                     return matches
         return matches
+
+    def text_fields(self) -> dict[str, str]:
+        """Return editable AcroForm text fields by fully qualified name."""
+        fields = read_pdf(self.data).get_fields() or {}
+        result = {}
+        for name, field in fields.items():
+            if field.get("/FT") == "/Tx" and not field.get("/Ff", 0) & 1:
+                result[name] = str(field.get("/V", ""))
+        return result
+
+    def fill_text_field(self, name: str, value: str) -> None:
+        if name not in self.text_fields():
+            raise ValueError("Choose an editable text form field.")
+        if not isinstance(value, str) or len(value) > 10_000:
+            raise ValueError("Form text must be at most 10,000 characters.")
+        writer = self.writer()
+        writer.update_page_form_field_values(None, {name: value}, auto_regenerate=False)
+        self.commit(writer)
+
+    def choice_fields(self) -> dict[str, tuple[str, list[str]]]:
+        result = {}
+        for name, field in (read_pdf(self.data).get_fields() or {}).items():
+            options = field.get("/Opt", [])
+            if (
+                field.get("/FT") == "/Ch"
+                and not field.get("/Ff", 0) & 1
+                and isinstance(options, (list, ArrayObject))
+                and options
+                and all(isinstance(item, str) for item in options)
+            ):
+                result[name] = (str(field.get("/V", "")), [str(item) for item in options])
+        return result
+
+    def fill_choice_field(self, name: str, value: str) -> None:
+        fields = self.choice_fields()
+        if name not in fields or value not in fields[name][1]:
+            raise ValueError("Choose a listed option for an editable choice field.")
+        writer = self.writer()
+        writer.update_page_form_field_values(None, {name: value}, auto_regenerate=False)
+        self.commit(writer)
+
+    def checkbox_fields(self) -> dict[str, bool]:
+        result = {}
+        for name, field in (read_pdf(self.data).get_fields() or {}).items():
+            states = field.get("/_States_", [])
+            if (
+                field.get("/FT") == "/Btn"
+                and not field.get("/Ff", 0) & (1 | (1 << 15) | (1 << 16))
+                and "/Yes" in states
+                and "/Off" in states
+            ):
+                result[name] = field.get("/V") == "/Yes"
+        return result
+
+    def set_checkbox(self, name: str, checked: bool) -> None:
+        if name not in self.checkbox_fields() or type(checked) is not bool:
+            raise ValueError("Choose an editable Yes/Off checkbox.")
+        writer = self.writer()
+        writer.update_page_form_field_values(
+            None, {name: "/Yes" if checked else "/Off"}, auto_regenerate=False
+        )
+        self.commit(writer)
+
+    def metadata(self) -> dict[str, str]:
+        info = read_pdf(self.data).metadata
+        return {
+            key: str(info.get(key, "")) if info else ""
+            for key in ("/Title", "/Author", "/Subject", "/Keywords")
+        }
+
+    def set_metadata(self, values: dict[str, str]) -> None:
+        allowed = {"/Title", "/Author", "/Subject", "/Keywords"}
+        if (
+            not isinstance(values, dict)
+            or set(values) != allowed
+            or any(not isinstance(value, str) or len(value) > 2_000 for value in values.values())
+        ):
+            raise ValueError("Enter title, author, subject and keywords (up to 2,000 characters).")
+        writer = self.writer()
+        writer.add_metadata(values)
+        self.commit(writer)
+
+    def add_bookmark(self, title: str, index: int) -> None:
+        if not isinstance(title, str) or not title.strip() or len(title) > 200:
+            raise ValueError("Enter a bookmark title up to 200 characters.")
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        writer = self.writer()
+        writer.add_outline_item(title.strip(), index)
+        self.commit(writer)
+
+    def bookmarks(self) -> list[dict]:
+        reader = read_pdf(self.data)
+        result = []
+
+        def visit(items, depth):
+            if depth > 20:
+                return
+            for item in items:
+                if len(result) >= 1000:
+                    return
+                if isinstance(item, list):
+                    visit(item, depth + 1)
+                    continue
+                try:
+                    page = reader.get_destination_page_number(item)
+                except (KeyError, ValueError, TypeError):
+                    continue
+                if 0 <= page < len(reader.pages):
+                    result.append({"title": str(item.title)[:200], "page": page, "depth": depth})
+
+        visit(reader.outline, 0)
+        return result
+
+    def notes(self, index: int) -> list[str]:
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        page = read_pdf(self.data).pages[index]
+        return [
+            str(ref.get_object().get("/Contents", ""))
+            for ref in page.get("/Annots", [])
+            if ref.get_object().get("/Subtype") == "/Text"
+        ]
+
+    def add_note(self, index: int, x: float, y: float, text: str) -> None:
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        if not isinstance(text, str) or not text.strip() or len(text) > 2000:
+            raise ValueError("Enter note text up to 2,000 characters.")
+        width, height = self.size(index)
+        if not all(math.isfinite(v) for v in (x, y)) or not 0 <= x < width or not 0 <= y < height:
+            raise ValueError("Place the note inside the visible page.")
+        writer = self.writer()
+        page = writer.pages[index]
+        left, bottom = float(page.cropbox.left), float(page.cropbox.bottom)
+        right, top = float(page.cropbox.right), float(page.cropbox.top)
+        matrices = {
+            0: (1, 0, 0, 1, left, bottom),
+            90: (0, 1, -1, 0, right, bottom),
+            180: (-1, 0, 0, -1, right, top),
+            270: (0, -1, 1, 0, left, top),
+        }
+        a, b, c, d, e, f = matrices[page.rotation % 360]
+        corners = [(x, height - y), (min(x + 24, width), height - min(y + 24, height))]
+        points = [(a * px + c * py + e, b * px + d * py + f) for px, py in corners]
+        rect = (
+            min(p[0] for p in points),
+            min(p[1] for p in points),
+            max(p[0] for p in points),
+            max(p[1] for p in points),
+        )
+        writer.add_annotation(index, TextNote(rect=rect, text=text.strip()))
+        self.commit(writer)
+
+    def delete_note(self, index: int, note_index: int) -> None:
+        writer = self.writer()
+        annotations = writer.pages[index].get("/Annots", [])
+        positions = [
+            i for i, ref in enumerate(annotations) if ref.get_object().get("/Subtype") == "/Text"
+        ]
+        if type(note_index) is not int or not 0 <= note_index < len(positions):
+            raise ValueError("Choose a note on this page.")
+        del annotations[positions[note_index]]
+        self.commit(writer)
 
     def export_preflight(self) -> dict:
         reader = read_pdf(self.data)
@@ -370,7 +666,7 @@ class Document:
             "forms": len(reader.get_fields() or {}),
             "warnings": [
                 "Visual whiteout and subset export are not secure redaction.",
-                "Edited PDFs and editing sessions are unencrypted.",
+                "Standard saved PDFs and editing sessions are unencrypted. Use Save encrypted copy for protected PDF output.",
                 "Editing does not preserve valid digital signatures.",
                 "Review links, forms and annotation appearances in the exported copy.",
             ],
@@ -391,13 +687,20 @@ class Document:
                     "Choose a different name. Forge PDF keeps your original files untouched."
                 )
 
-    def save_copy(self, path: Path, overwrite: bool = False) -> None:
+    def save_copy(self, path: Path, overwrite: bool = False, password: str | None = None) -> None:
         path = path.resolve()
         if path.suffix.lower() != ".pdf":
             raise ValueError("Save the document with a .pdf extension.")
         self.check_destination(path)
         read_pdf(self.data)
-        write_copy_bytes(path, self.data, overwrite)
+        output = self.data
+        if password is not None:
+            if not isinstance(password, str) or not password:
+                raise ValueError("Enter a nonempty password for the encrypted copy.")
+            writer = self.writer()
+            writer.encrypt(password, algorithm="AES-256")
+            output = serialize(writer)
+        write_copy_bytes(path, output, overwrite)
         self.saved = self.data
 
 
@@ -411,14 +714,9 @@ def write_copy_bytes(path: Path, data: bytes, overwrite: bool = False) -> None:
         if overwrite:
             os.replace(name, path)
         else:
-            with path.open("xb") as output:
-                try:
-                    output.write(data)
-                    output.flush()
-                    os.fsync(output.fileno())
-                except BaseException:
-                    output.close()
-                    path.unlink(missing_ok=True)
-                    raise
+            # A same-directory hard link publishes the fully written file atomically
+            # and fails if the destination already exists. Copying into an "xb" file
+            # could leave a truncated PDF or session after a crash.
+            os.link(name, path)
     finally:
         Path(name).unlink(missing_ok=True)

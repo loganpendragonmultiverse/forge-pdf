@@ -22,13 +22,27 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 
 ## Features
 
-- Find literal document text across pages with next/previous matches. Image-only pages need external OCR.
+- Find literal document text across pages with case and whole-word options, a result list,
+  and next/previous matches. Image-only pages need external OCR.
 - Add text with a selected local TrueType font and check the entered text for missing glyphs.
 - Place PNG/JPEG image stamps with a drag preview and preserved transparency.
 - Explicitly save/reopen a self-contained editing session, including bounded Undo history.
+- Optionally enable a local recovery snapshot for the current document. New copies and
+  sessions are published atomically after their bytes are written.
 - Render previews on a single worker; obsolete previews cannot replace newer pages.
 - Use two toolbar rows, a hideable pages panel and wrapped hints in smaller desktop windows.
 - Review an export summary of pages, links, form fields and annotations before sharing.
+- Fill existing editable text form fields, edit title/author/subject/keywords, and add a bookmark for the current page.
+- Fill simple choice fields and Yes/Off checkboxes; browse bookmarks; add and delete native
+  text notes. Rotate selected page ranges as one Undoable edit.
+- Use **Edit form fields** to choose supported fields from a list and edit them with
+  text, option, or checkbox controls.
+- Add a numbered or prefixed page-label range when the source has no custom labels;
+  the pages panel displays the resulting labels.
+- Save an AES-256 password-encrypted PDF copy through **Page actions → Save encrypted copy**.
+- Use **Page actions → Rasterized redacted export** to drag a blacked-out area into a
+  new image-only PDF. The export rebuilds every page from rendered pixels and discards
+  source text, forms, links, annotations, bookmarks, attachments and metadata.
 
 - Drag-to-whiteout and highlight, with click-to-place text in sizes from 8 to 72 points.
 - Clear footer on every page: choose a height, defaulting to 5 pixels at 100% zoom.
@@ -69,7 +83,14 @@ Sessions are **unencrypted**, including documents originally opened with a passw
 Their Undo snapshots can retain earlier or deleted content. Review them before sharing.
 Opening a session restores its embedded PDF and view without reading recorded external
 files. Save an edited PDF separately; saving a session does not mark a PDF copy as exported.
-There is no autosave, background persistence, account connection or new persistent access.
+For opt-in recovery, choose **Session → Enable local recovery** and a local `.forgepdf`
+destination. Forge PDF writes the current document there after edits, with a short idle
+delay and without Undo snapshots. Open it using **Open editing session** after a crash.
+**Stop local recovery** stops updates but keeps the file; **Delete local recovery snapshot**
+stops updates and removes it. Recovery files are unencrypted, include original filenames,
+and remain on disk until deleted. Recovery is unavailable for password-opened PDFs;
+do not enable it for other sensitive documents.
+There is no default autosave, account connection or network upload.
 
 For a smaller window, use **Pages** to hide the sidebar. **Page actions** retains its commands.
 Use **Add text → Local font** and **Check glyphs** before placing new text. Choose an image
@@ -94,30 +115,44 @@ install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build c
 ## Limitations
 
 - Adds content over existing pages; does not rewrite existing paragraphs, perform OCR,
-  securely redact, validate signatures, or provide interactive form filling.
+  preserve vector/text content during redacted export, validate signatures, or support every AcroForm control. Form filling
+  requires existing editable fields; complex choice options, radio groups, custom checkbox
+  states, field creation, and XFA forms are unsupported.
 - Whiteout retains underlying PDF content. It is inappropriate for hiding confidential data.
+- Rasterized redacted export supports up to 20 pages and bounded page dimensions. It
+  removes PDF objects from the new copy, but loses all searchable text, form behavior,
+  links, accessibility structure and vector quality. The new PDF is unencrypted.
+  The open source document and any
+  prior editing sessions may still hold the unredacted material. Inspect the exported
+  image-only PDF and manage original copies separately before sharing.
 - On an edited page, visible annotations and form fields become page content before
   new marks are added. Links remain interactive; untouched pages retain their annotations.
-- Editing signed PDFs invalidates their cryptographic signatures. Password-opened edited
-  copies are saved without encryption. Dynamic form appearances and malformed PDFs can fail.
+- Editing signed PDFs invalidates their cryptographic signatures. A normal **Save a copy** of
+  a password-opened PDF is unencrypted; use **Save encrypted copy** to set a new password.
+  Editing sessions remain unencrypted. Dynamic form appearances and malformed PDFs can fail.
 - Added text defaults to Helvetica/Western European characters. Choose a local .ttf font
   for other glyphs. Font files are limited to 20 MB; glyph presence does not establish
   complex-script shaping, font licensing or arbitrary-font compatibility. Text must fit.
 - Image stamps accept PNG/JPEG up to 20 MB and 16 million pixels. They fit inside the
   selected rectangle with their aspect ratio retained. Stamps are visual images, not signatures.
-- Text search is literal and case-insensitive, capped at 1000 matches and 256 query characters.
-  Search does not perform OCR or highlight exact glyph positions on the canvas.
+- Text search is literal and defaults to case-insensitive, capped at 1000 matches and
+  256 query characters. Optional case and whole-word matching is available. Search
+  does not perform OCR or highlight exact glyph positions on the canvas.
 - Supports up to 50 MB and 500 pages, including merged output. Complex files can pause
   the interface during processing. This app is intended for modest everyday documents.
-- Undo keeps up to 30 edits within a 100 MB snapshot budget. No autosave or crash recovery.
+- Undo keeps up to 30 edits within a 100 MB snapshot budget. Recovery is opt-in and
+  may miss the most recent edit if the app exits before the idle snapshot completes.
 - Page manipulation can affect bookmarks, links, and advanced PDF structures. Review
   saved copies against originals when preservation or print fidelity matters.
+- Page-label editing currently refuses PDFs that already contain custom labels, to avoid
+  silently rewriting their label structure.
 - The Windows executable is unsigned. The release includes checksums for integrity checks.
 
 ## Privacy
 
 The editor makes no network requests, uploads no files, runs no PDF scripts, and
-stores work in memory until you explicitly save a PDF copy or editing session. It is not a sandbox for hostile PDFs. Installation
+stores work in memory until you explicitly save a PDF copy, editing session or enable
+local recovery. It is not a sandbox for hostile PDFs. Installation
 and development dependency audits use the network. See [SECURITY.md](SECURITY.md).
 
 ## Contributing and license

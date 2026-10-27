@@ -1,5 +1,6 @@
 """Build a portable directory and retain dependency notices alongside it."""
 
+import argparse
 import importlib.metadata as metadata
 import shutil
 import subprocess
@@ -9,30 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
-    if sys.platform != "win32":
-        raise SystemExit("Build this Windows preview on Windows.")
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "PyInstaller",
-            "--noconfirm",
-            "--windowed",
-            "--name",
-            "Forge PDF",
-            "--collect-all",
-            "pypdfium2",
-            "--collect-all",
-            "pypdfium2_raw",
-            "--collect-all",
-            "reportlab",
-            str(ROOT / "tools" / "desktop_entry.py"),
-        ],
-        cwd=ROOT,
-        check=True,
-    )
-    destination = ROOT / "dist" / "Forge PDF"
+def add_support(destination: Path):
     support = destination / "Support"
     support.mkdir(exist_ok=True)
     for name in [
@@ -76,9 +54,40 @@ def main():
             target = licenses / "tcl-tk" / source.relative_to(tclroot)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
-    archive = shutil.make_archive(
-        str(ROOT / "dist" / "Forge-PDF-1.2.0-Windows"), "zip", ROOT / "dist", "Forge PDF"
+
+
+def main():
+    if sys.platform != "win32":
+        raise SystemExit("Build this Windows preview on Windows.")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--preview", action="store_true", help="Build a separately named local preview"
     )
+    args = parser.parse_args()
+    name = "Forge PDF Preview" if args.preview else "Forge PDF"
+    archive_name = "Forge-PDF-Preview-Windows" if args.preview else "Forge-PDF-1.2.0-Windows"
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            "--noconfirm",
+            "--windowed",
+            "--name",
+            name,
+            "--collect-all",
+            "pypdfium2",
+            "--collect-all",
+            "pypdfium2_raw",
+            "--collect-all",
+            "reportlab",
+            str(ROOT / "tools" / "desktop_entry.py"),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
+    add_support(ROOT / "dist" / name)
+    archive = shutil.make_archive(str(ROOT / "dist" / archive_name), "zip", ROOT / "dist", name)
     print(archive)
 
 

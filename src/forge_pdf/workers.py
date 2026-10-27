@@ -39,7 +39,14 @@ def _work(connection, memory_name, length, role, params):
         elif role == "search":
             connection.send_bytes(
                 json.dumps(
-                    {"status": "search", "matches": document.search(params["query"])}
+                    {
+                        "status": "search",
+                        "matches": document.search(
+                            params["query"],
+                            case_sensitive=params.get("case_sensitive", False),
+                            whole_word=params.get("whole_word", False),
+                        ),
+                    }
                 ).encode()
             )
         else:

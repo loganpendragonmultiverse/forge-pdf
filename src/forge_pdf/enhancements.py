@@ -85,12 +85,12 @@ def stamp_image(path: Path | bytes):
             return image.convert("RGBA").copy()
 
 
-def session_payload(document, page: int, zoom: float) -> bytes:
+def session_payload(document, page: int, zoom: float, include_history: bool = True) -> bytes:
     if not 0 <= page < document.count or not math.isfinite(zoom) or not 0.05 <= zoom <= 3:
         raise ValueError("Invalid session view state.")
     snapshots = []
     total = len(document.data)
-    for item in reversed(document.undo_stack[-30:]):
+    for item in reversed(document.undo_stack[-30:] if include_history else []):
         if total + len(item) > SESSION_BYTES:
             break
         snapshots.insert(0, item)
@@ -192,14 +192,21 @@ def open_session(path: Path):
         raise ValueError("This is not a valid Forge PDF editing session.") from exc
 
 
-def save_session(document, path: Path, page: int, zoom: float, overwrite: bool = False):
+def save_session(
+    document,
+    path: Path,
+    page: int,
+    zoom: float,
+    overwrite: bool = False,
+    include_history: bool = True,
+):
     if path.suffix.lower() != ".forgepdf":
         raise ValueError("Save editing sessions with a .forgepdf extension.")
     document.check_destination(path)
-    data = session_payload(document, page, zoom)
+    data = session_payload(document, page, zoom, include_history=include_history)
     if len(data) > SESSION_BYTES + 1024 * 1024:
         raise ValueError("Editing session exceeds its bounded file limit.")
-    # Explicit exclusive creation; overwrites use a same-directory atomic replacement.
+    # Both new files and overwrites publish completed bytes atomically.
     from .document import write_copy_bytes
 
     write_copy_bytes(path, data, overwrite)

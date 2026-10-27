@@ -29,7 +29,23 @@ INK = "#203340"
 
 class Editor(tk.Tk):
     def __init__(self):
-        super().__init__()
+        # Windows Tcl/Tk can intermittently fail while locating its script library
+        # after another root has closed. Retry that bootstrap failure once; other
+        # Tk errors still surface immediately.
+        for attempt in range(2):
+            try:
+                super().__init__()
+                break
+            except tk.TclError as exc:
+                if attempt or not any(
+                    marker in str(exc)
+                    for marker in (
+                        "tcl_findLibrary",
+                        "Can't find a usable init.tcl",
+                        "Can't find a usable tk.tcl",
+                    )
+                ):
+                    raise
         self.title("Forge PDF")
         self.geometry("1180x820")
         self.minsize(740, 520)
@@ -58,9 +74,12 @@ class Editor(tk.Tk):
         self.preview_generation = 0
         self.preview_pending = False
         self.preview_poll = None
+        self.recovery_path = None
+        self.recovery_after = None
         self.view_target = None
         self.closing = False
         self.search_window = None
+        self.search_listbox = None
         self.search_future = None
         self.search_results = []
         self.search_snapshot = None
@@ -149,6 +168,12 @@ class Editor(tk.Tk):
         session_menu.add_command(
             label="Open editing session…  Ctrl+Shift+O", command=self.open_session_dialog
         )
+        session_menu.add_separator()
+        session_menu.add_command(label="Enable local recovery…", command=self.enable_recovery)
+        session_menu.add_command(label="Stop local recovery", command=self.stop_recovery)
+        session_menu.add_command(
+            label="Delete local recovery snapshot…", command=self.delete_recovery
+        )
         session.configure(menu=session_menu)
         session.pack(side="right", padx=8)
 
@@ -170,6 +195,7 @@ class Editor(tk.Tk):
             ("text", "Add text"),
             ("highlight", "Highlight"),
             ("whiteout", "Whiteout"),
+            ("note", "Add note"),
             ("image", "Image stamp"),
         ]:
             ttk.Radiobutton(
@@ -282,6 +308,8 @@ class Editor(tk.Tk):
         )
         menu.add_command(label="Export this page…", command=self.export_page)
         menu.add_command(label="Export page ranges…", command=self.export_ranges)
+        menu.add_command(label="Rotate page ranges right…", command=self.rotate_ranges)
+        menu.add_command(label="Set page labels…", command=self.page_labels_dialog)
         menu.add_command(
             label="Rotate left",
             command=lambda: self.change(lambda: self.doc.rotate(self.page, -90)),
@@ -294,6 +322,19 @@ class Editor(tk.Tk):
         menu.add_command(label="Delete page", command=self.delete)
         menu.add_command(label="Merge another PDF…", command=self.merge)
         menu.add_command(label="Export checks…", command=self.preflight_dialog)
+        menu.add_separator()
+        menu.add_command(label="Fill text form field…", command=self.fill_text_field_dialog)
+        menu.add_command(label="Edit form fields…", command=self.edit_form_fields_dialog)
+        menu.add_command(label="Fill choice form field…", command=self.fill_choice_field_dialog)
+        menu.add_command(label="Toggle checkbox field…", command=self.toggle_checkbox_dialog)
+        menu.add_command(label="Edit document metadata…", command=self.metadata_dialog)
+        menu.add_command(label="Add bookmark for this page…", command=self.bookmark_dialog)
+        menu.add_command(label="Browse bookmarks…", command=self.browse_bookmarks)
+        menu.add_command(label="Review notes on this page…", command=self.review_notes)
+        menu.add_command(label="Save encrypted copy…", command=self.save_encrypted)
+        menu.add_command(
+            label="Rasterized redacted export…", command=lambda: self.set_mode("raster_redact")
+        )
         actions_menu = ttk.Menubutton(
             actions, text="Page actions", menu=menu, style="Compact.TMenubutton", width=0
         )
@@ -394,6 +435,7 @@ class Editor(tk.Tk):
                     return
                 candidate = Document.open(path, password)
             candidate.render(0, 0.2)  # Validate rendering before replacing the current document.
+            self.stop_recovery()
             self.doc, self.path, self.page, self.fit = candidate, path, 0, False
             self.zoom = 1.0
             self.canvas.xview_moveto(0)
@@ -425,14 +467,494 @@ class Editor(tk.Tk):
             self.error(exc)
             return False
 
+    def save_encrypted(self):
+        if not self.doc:
+            return False
+        password = simpledialog.askstring(
+            "Save encrypted copy", "Password for the new PDF:", show="*", parent=self
+        )
+        if password is None:
+            return False
+        confirm = simpledialog.askstring(
+            "Save encrypted copy", "Confirm password:", show="*", parent=self
+        )
+        if confirm is None:
+            return False
+        if not password or password != confirm:
+            self.error(ValueError("Passwords must match and cannot be empty."))
+            return False
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Save an AES-256 encrypted copy",
+            initialfile=f"{self.path.stem}-encrypted.pdf",
+            initialdir=self.path.parent,
+            defaultextension=".pdf",
+            filetypes=[("PDF documents", "*.pdf")],
+            confirmoverwrite=True,
+        )
+        if not path:
+            return False
+        try:
+            self.doc.save_copy(Path(path), overwrite=Path(path).exists(), password=password)
+            self.refresh()
+            self.status.configure(text=f"Saved encrypted copy: {path}")
+            return True
+        except Exception as exc:
+            self.error(exc)
+            return False
+
+    def fill_text_field_dialog(self):
+        if not self.doc:
+            return
+        try:
+            fields = self.doc.text_fields()
+            if not fields:
+                messagebox.showinfo("Forge PDF", "No editable text form fields found.", parent=self)
+                return
+            name = simpledialog.askstring(
+                "Text form fields",
+                "Field name (choose from: " + ", ".join(fields) + "):",
+                parent=self,
+            )
+            if name is None:
+                return
+            if name not in fields:
+                raise ValueError("Choose an editable text form field from the list.")
+            value = simpledialog.askstring(
+                "Fill form field", f"Value for {name}:", initialvalue=fields[name], parent=self
+            )
+            if value is not None:
+                self.change(lambda: self.doc.fill_text_field(name, value))
+        except Exception as exc:
+            self.error(exc)
+
+    def edit_form_fields_dialog(self):
+        if not self.doc:
+            return
+        fields = {}
+        for name, value in self.doc.text_fields().items():
+            fields[name] = ("Text", value, [])
+        for name, (value, options) in self.doc.choice_fields().items():
+            fields[name] = ("Choice", value, options)
+        for name, checked in self.doc.checkbox_fields().items():
+            fields[name] = ("Checkbox", checked, [])
+        if not fields:
+            messagebox.showinfo(
+                "Forge PDF", "No supported editable form fields found.", parent=self
+            )
+            return
+        names = sorted(fields)
+        dialog = tk.Toplevel(self)
+        dialog.title("Edit form fields")
+        dialog.geometry("580x400")
+        dialog.transient(self)
+        ttk.Label(dialog, text="Choose a field, edit its value, then apply.").pack(
+            anchor="w", padx=12, pady=(12, 6)
+        )
+        listing = tk.Listbox(dialog, exportselection=False)
+        listing.pack(fill="both", expand=True, padx=12)
+        for name in names:
+            kind, value, _ = fields[name]
+            listing.insert("end", f"{name}  ·  {kind}  ·  {value}")
+        value_label = ttk.Label(dialog, text="")
+        value_label.pack(anchor="w", padx=12, pady=(10, 3))
+        text_value = ttk.Entry(dialog)
+        choice_value = ttk.Combobox(dialog, state="readonly")
+        check_value = tk.BooleanVar(value=False)
+        checkbox = ttk.Checkbutton(dialog, text="Checked", variable=check_value)
+
+        def selected_name():
+            return names[listing.curselection()[0]] if listing.curselection() else None
+
+        def select_field(event=None):
+            text_value.pack_forget()
+            choice_value.pack_forget()
+            checkbox.pack_forget()
+            name = selected_name()
+            if name is None:
+                return
+            kind, value, options = fields[name]
+            value_label.configure(text=f"{name} ({kind})")
+            if kind == "Text":
+                text_value.delete(0, "end")
+                text_value.insert(0, value)
+                text_value.pack(fill="x", padx=12)
+            elif kind == "Choice":
+                choice_value.configure(values=options)
+                choice_value.set(value)
+                choice_value.pack(fill="x", padx=12)
+            else:
+                check_value.set(value)
+                checkbox.pack(anchor="w", padx=12)
+
+        def apply_value():
+            name = selected_name()
+            if name is None:
+                return
+            kind, _, options = fields[name]
+            previous = self.doc.data
+            if kind == "Text":
+                value = text_value.get()
+                self.change(lambda: self.doc.fill_text_field(name, value))
+            elif kind == "Choice":
+                value = choice_value.get()
+                if value in options:
+                    self.change(lambda: self.doc.fill_choice_field(name, value))
+            else:
+                value = check_value.get()
+                self.change(lambda: self.doc.set_checkbox(name, value))
+            if self.doc.data == previous:
+                return
+            fields[name] = (kind, value, options)
+            index = listing.curselection()[0]
+            listing.delete(index)
+            listing.insert(index, f"{name}  ·  {kind}  ·  {value}")
+            listing.selection_set(index)
+
+        listing.bind("<<ListboxSelect>>", select_field)
+        controls = ttk.Frame(dialog)
+        controls.pack(fill="x", padx=12, pady=12)
+        ttk.Button(controls, text="Apply value", command=apply_value).pack(side="left")
+        ttk.Button(controls, text="Close", command=dialog.destroy).pack(side="right")
+        listing.selection_set(0)
+        select_field()
+        listing.focus_set()
+
+    def fill_choice_field_dialog(self):
+        if not self.doc:
+            return
+        try:
+            fields = self.doc.choice_fields()
+            if not fields:
+                messagebox.showinfo(
+                    "Forge PDF", "No editable simple choice fields found.", parent=self
+                )
+                return
+            name = simpledialog.askstring(
+                "Choice form fields",
+                "Field name (choose from: " + ", ".join(fields) + "):",
+                parent=self,
+            )
+            if name is None:
+                return
+            if name not in fields:
+                raise ValueError("Choose an editable choice field from the list.")
+            current, options = fields[name]
+            value = simpledialog.askstring(
+                "Fill choice field",
+                f"{name}: choose from {', '.join(options)}",
+                initialvalue=current,
+                parent=self,
+            )
+            if value is not None:
+                self.change(lambda: self.doc.fill_choice_field(name, value))
+        except Exception as exc:
+            self.error(exc)
+
+    def toggle_checkbox_dialog(self):
+        if not self.doc:
+            return
+        try:
+            fields = self.doc.checkbox_fields()
+            if not fields:
+                messagebox.showinfo(
+                    "Forge PDF", "No editable Yes/Off checkboxes found.", parent=self
+                )
+                return
+            name = simpledialog.askstring(
+                "Checkbox fields",
+                "Field name (choose from: " + ", ".join(fields) + "):",
+                parent=self,
+            )
+            if name is not None:
+                if name not in fields:
+                    raise ValueError("Choose an editable Yes/Off checkbox from the list.")
+                self.change(lambda: self.doc.set_checkbox(name, not fields[name]))
+        except Exception as exc:
+            self.error(exc)
+
+    def metadata_dialog(self):
+        if not self.doc:
+            return
+        values = self.doc.metadata()
+        for key in ("/Title", "/Author", "/Subject", "/Keywords"):
+            value = simpledialog.askstring(
+                "Document metadata", key[1:] + ":", initialvalue=values[key], parent=self
+            )
+            if value is None:
+                return
+            values[key] = value
+        self.change(lambda: self.doc.set_metadata(values))
+
+    def bookmark_dialog(self):
+        if not self.doc:
+            return
+        title = simpledialog.askstring(
+            "Add bookmark", f"Bookmark title for page {self.page + 1}:", parent=self
+        )
+        if title is not None:
+            self.change(lambda: self.doc.add_bookmark(title, self.page))
+
+    def browse_bookmarks(self):
+        if not self.doc:
+            return
+        try:
+            bookmarks = self.doc.bookmarks()
+        except Exception as exc:
+            self.error(exc)
+            return
+        if not bookmarks:
+            messagebox.showinfo("Forge PDF", "No usable bookmarks in this PDF.", parent=self)
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title("Document bookmarks")
+        dialog.geometry("480x360")
+        listing = tk.Listbox(dialog, exportselection=False)
+        listing.pack(fill="both", expand=True, padx=12, pady=12)
+        for item in bookmarks:
+            listing.insert(
+                "end", f"{'  ' * item['depth']}{item['title']}  ·  page {item['page'] + 1}"
+            )
+
+        def navigate(event=None):
+            if listing.curselection():
+                self.show_page(bookmarks[listing.curselection()[0]]["page"])
+                dialog.destroy()
+
+        listing.bind("<Double-Button-1>", navigate)
+        ttk.Button(dialog, text="Go to selected", command=navigate).pack(pady=(0, 12))
+
+    def review_notes(self):
+        if not self.doc:
+            return
+        try:
+            notes = self.doc.notes(self.page)
+        except Exception as exc:
+            self.error(exc)
+            return
+        if not notes:
+            messagebox.showinfo("Forge PDF", "No text notes on this page.", parent=self)
+            return
+        dialog = tk.Toplevel(self)
+        dialog.title(f"Text notes · page {self.page + 1}")
+        dialog.geometry("520x340")
+        listing = tk.Listbox(dialog, exportselection=False)
+        listing.pack(fill="both", expand=True, padx=12, pady=12)
+
+        def populate():
+            listing.delete(0, "end")
+            for note in self.doc.notes(self.page):
+                listing.insert("end", note.replace("\n", " ")[:160])
+
+        def delete_selected():
+            if listing.curselection():
+                index = listing.curselection()[0]
+                self.change(lambda: self.doc.delete_note(self.page, index))
+                populate()
+
+        populate()
+        ttk.Button(dialog, text="Delete selected note", command=delete_selected).pack(pady=(0, 12))
+
+    def rotate_ranges(self):
+        if not self.doc:
+            return
+        selection = simpledialog.askstring(
+            "Rotate page ranges",
+            f"Pages to rotate right (1-{self.doc.count}, e.g. 1,3-5):",
+            parent=self,
+        )
+        if selection is not None:
+            try:
+                indices = parse_page_ranges(selection, self.doc.count)
+                self.change(lambda: self.doc.rotate_pages(indices))
+            except Exception as exc:
+                self.error(exc)
+
+    def page_labels_dialog(self):
+        if not self.doc:
+            return
+        first = simpledialog.askinteger(
+            "Page labels",
+            "First page:",
+            initialvalue=self.page + 1,
+            minvalue=1,
+            maxvalue=self.doc.count,
+            parent=self,
+        )
+        if first is None:
+            return
+        last = simpledialog.askinteger(
+            "Page labels",
+            "Last page:",
+            initialvalue=self.doc.count,
+            minvalue=first,
+            maxvalue=self.doc.count,
+            parent=self,
+        )
+        if last is None:
+            return
+        prefix = simpledialog.askstring("Page labels", "Prefix (optional):", parent=self)
+        if prefix is None:
+            return
+        style = simpledialog.askstring(
+            "Page labels",
+            "Style: decimal, roman or letters:",
+            initialvalue="decimal",
+            parent=self,
+        )
+        if style is None:
+            return
+        start = simpledialog.askinteger(
+            "Page labels",
+            "Starting number:",
+            initialvalue=1,
+            minvalue=1,
+            maxvalue=100000,
+            parent=self,
+        )
+        if start is not None:
+            self.change(
+                lambda: self.doc.set_page_labels(
+                    first - 1, last - 1, prefix, style.strip().lower(), start
+                )
+            )
+
+    def export_redacted(self, box):
+        if not messagebox.askyesno(
+            "Rasterized redacted export",
+            "This makes a new image-only PDF with the selected area blacked out. "
+            "Searchable text, forms, links, notes, bookmarks, accessibility structure, "
+            "metadata and signatures are removed from every page. The new PDF is unencrypted. The current document "
+            "and any saved editing sessions may still contain the original content. Continue?",
+            parent=self,
+        ):
+            return False
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Save rasterized redacted PDF",
+            initialfile=f"{self.path.stem}-redacted.pdf",
+            initialdir=self.path.parent,
+            defaultextension=".pdf",
+            filetypes=[("PDF documents", "*.pdf")],
+            confirmoverwrite=True,
+        )
+        if not path:
+            return False
+        try:
+            self.doc.export_raster_redacted(
+                self.page, box, Path(path), overwrite=Path(path).exists()
+            )
+            self.status.configure(
+                text=f"Rasterized redacted copy saved: {path}. Review it before sharing."
+            )
+            self.set_mode("view")
+            return True
+        except Exception as exc:
+            self.error(exc)
+            return False
+
     def change(self, fn):
         if not self.doc:
             return
         try:
+            previous = self.doc.data
             fn()
             self.refresh()
+            if self.doc.data != previous:
+                self.schedule_recovery()
         except Exception as exc:
             self.error(exc)
+
+    def schedule_recovery(self):
+        if self.recovery_after:
+            self.after_cancel(self.recovery_after)
+            self.recovery_after = None
+        if self.recovery_path and self.doc and not self.closing:
+            self.recovery_after = self.after(1200, self.write_recovery)
+
+    def write_recovery(self):
+        self.recovery_after = None
+        if not self.recovery_path or not self.doc or self.closing:
+            return
+        try:
+            save_session(
+                self.doc,
+                self.recovery_path,
+                self.page,
+                self.zoom,
+                overwrite=self.recovery_path.exists(),
+                include_history=False,
+            )
+            self.status.configure(text=f"Local recovery snapshot updated: {self.recovery_path}")
+        except Exception as exc:
+            self.status.configure(text=f"Local recovery failed: {exc}")
+
+    def enable_recovery(self):
+        if not self.doc:
+            return False
+        if self.doc.opened_encrypted:
+            self.error(ValueError("Local recovery is unavailable for password-opened PDFs."))
+            return False
+        if self.recovery_path:
+            self.error(ValueError("Stop or delete the current recovery snapshot first."))
+            return False
+        if not messagebox.askyesno(
+            "Enable local recovery",
+            "Keep an unencrypted local recovery file after edits? It contains the current PDF "
+            "and original filenames, but no Undo history. It remains until you delete it. "
+            "Do not use this for sensitive documents.",
+            parent=self,
+        ):
+            return False
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Choose a local recovery file",
+            initialfile=f"{self.path.stem}-recovery.forgepdf",
+            initialdir=self.path.parent,
+            defaultextension=".forgepdf",
+            filetypes=[("Forge PDF sessions", "*.forgepdf")],
+            confirmoverwrite=True,
+        )
+        if not path:
+            return False
+        try:
+            candidate = Path(path).resolve()
+            save_session(
+                self.doc,
+                candidate,
+                self.page,
+                self.zoom,
+                overwrite=candidate.exists(),
+                include_history=False,
+            )
+            self.stop_recovery()
+            self.recovery_path = candidate
+            self.status.configure(text=f"Local recovery enabled: {candidate}")
+            return True
+        except Exception as exc:
+            self.error(exc)
+            return False
+
+    def stop_recovery(self):
+        if self.recovery_after:
+            self.after_cancel(self.recovery_after)
+            self.recovery_after = None
+        self.recovery_path = None
+
+    def delete_recovery(self):
+        if not self.recovery_path:
+            messagebox.showinfo("Forge PDF", "No active recovery snapshot.", parent=self)
+            return
+        path = self.recovery_path
+        if messagebox.askyesno(
+            "Delete local recovery", f"Stop recovery and delete this snapshot?\n{path}", parent=self
+        ):
+            try:
+                path.unlink(missing_ok=True)
+                self.stop_recovery()
+                self.status.configure(text="Local recovery snapshot deleted.")
+            except Exception as exc:
+                self.error(exc)
 
     def rotate(self):
         self.change(lambda: self.doc.rotate(self.page))
@@ -708,6 +1230,8 @@ class Editor(tk.Tk):
                 "text": "Enter your text above, then click on the page to place it. Ctrl+Z to undo.",
                 "highlight": "Drag across an area to highlight it. Highlights do not remove or redact text.",
                 "whiteout": "Drag to cover an area in white. Visual cover only — underlying content can still be extracted.",
+                "note": "Click on the page to add a native text note. Review or delete notes through Page actions.",
+                "raster_redact": "Drag an area to black out in a new image-only PDF. Source objects are discarded; current file stays open.",
                 "image": "Choose a PNG/JPEG, then drag a rectangle. The image fits inside it; preview before release.",
             }[self.mode.get()]
         )
@@ -716,8 +1240,9 @@ class Editor(tk.Tk):
         self.pages.delete(0, "end")
         if self.doc:
             self.page = min(self.page, self.doc.count - 1)
+            labels = self.doc.page_labels()
             for n in range(self.doc.count):
-                self.pages.insert("end", f"  {n + 1:02d}    Page {n + 1}")
+                self.pages.insert("end", f"  {n + 1:02d}    {labels[n]}")
             self.pages.selection_set(self.page)
             self.pages.see(self.page)
             self.file_label.configure(text=self.path.name)
@@ -943,6 +1468,7 @@ class Editor(tk.Tk):
             candidate.render(page, 0.2)
             if not self.discard_ok():
                 return
+            self.stop_recovery()
             self.doc, self.path, self.page, self.zoom = candidate, Path(path), page, zoom
             self.fit = False
             self.local_font = self.stamp_data = None
@@ -963,6 +1489,10 @@ class Editor(tk.Tk):
         self.search_info.set(
             f"{self.search_position + 1} of {len(self.search_results)} · page {item['page'] + 1}\n{item['excerpt']}"
         )
+        if self.search_listbox is not None and self.search_listbox.winfo_exists():
+            self.search_listbox.selection_clear(0, "end")
+            self.search_listbox.selection_set(self.search_position)
+            self.search_listbox.see(self.search_position)
         self.show_page(item["page"])
         return "break"
 
@@ -975,16 +1505,32 @@ class Editor(tk.Tk):
         dialog = tk.Toplevel(self)
         self.search_window = dialog
         dialog.title("Find document text")
-        dialog.geometry("580x220")
+        dialog.geometry("620x420")
         dialog.transient(self)
-        ttk.Label(dialog, text="Literal text search · up to 1000 matches · no OCR").pack(
+        ttk.Label(dialog, text="Document text search · up to 1000 matches · no OCR").pack(
             padx=12, pady=8
         )
         entry = ttk.Entry(dialog)
         entry.pack(fill="x", padx=12)
+        case_sensitive = tk.BooleanVar(value=False)
+        whole_word = tk.BooleanVar(value=False)
+        ttk.Checkbutton(dialog, text="Match case", variable=case_sensitive).pack(
+            anchor="w", padx=12, pady=(6, 0)
+        )
+        ttk.Checkbutton(dialog, text="Whole word", variable=whole_word).pack(anchor="w", padx=12)
         ttk.Label(dialog, textvariable=self.search_info, wraplength=540).pack(
             fill="x", padx=12, pady=10
         )
+        results_list = tk.Listbox(dialog, exportselection=False)
+        self.search_listbox = results_list
+        results_list.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+        def select_result(event=None):
+            if results_list.curselection() and self.search_snapshot == self.doc.data:
+                self.search_position = results_list.curselection()[0] - 1
+                self.next_match()
+
+        results_list.bind("<Double-Button-1>", select_result)
         buttons = ttk.Frame(dialog)
         buttons.pack(fill="x", padx=12)
 
@@ -995,11 +1541,19 @@ class Editor(tk.Tk):
             snapshot = self.doc.data
             query = entry.get()
             self.search_results = []
+            results_list.delete(0, "end")
             self.search_snapshot = None
             self.search_position = -1
             self.search_info.set("Searching…")
             start.configure(state="disabled")
-            self.search_future = self.search_executor.submit(snapshot, {"query": query})
+            self.search_future = self.search_executor.submit(
+                snapshot,
+                {
+                    "query": query,
+                    "case_sensitive": case_sensitive.get(),
+                    "whole_word": whole_word.get(),
+                },
+            )
             future = self.search_future
 
             def poll():
@@ -1016,6 +1570,8 @@ class Editor(tk.Tk):
                         return
                     self.search_results, self.search_snapshot = matches, snapshot
                     self.search_position = -1
+                    for match in matches:
+                        results_list.insert("end", f"Page {match['page'] + 1}: {match['excerpt']}")
                     if matches:
                         self.next_match()
                     else:
@@ -1040,6 +1596,7 @@ class Editor(tk.Tk):
                 self.search_future.cancel()
                 self.search_future = None
             self.search_window = None
+            self.search_listbox = None
             dialog.destroy()
             return "break"
 
@@ -1079,7 +1636,11 @@ class Editor(tk.Tk):
                     font_path=self.local_font,
                 )
             )
-        elif self.mode.get() in ("highlight", "whiteout", "image"):
+        elif self.mode.get() == "note":
+            note = simpledialog.askstring("Add text note", "Note text:", parent=self)
+            if note is not None:
+                self.change(lambda: self.doc.add_note(self.page, x, y, note))
+        elif self.mode.get() in ("highlight", "whiteout", "image", "raster_redact"):
             if self.mode.get() == "image" and self.stamp_data is None:
                 self.status.configure(text="Choose a PNG or JPEG first.")
                 return
@@ -1131,7 +1692,9 @@ class Editor(tk.Tk):
         # Capture through mouse-up, and commit exactly once for a real rectangle.
         if abs(start[0] - end[0]) * self.scale_x < 2 or abs(start[1] - end[1]) * self.scale_y < 2:
             return
-        if tool == "image":
+        if tool == "raster_redact":
+            self.export_redacted((*start, *end))
+        elif tool == "image":
             x, x2 = sorted((start[0], end[0]))
             y, y2 = sorted((start[1], end[1]))
             self.change(
@@ -1145,7 +1708,7 @@ class Editor(tk.Tk):
     def destroy(self):
         if not self.closing:
             self.closing = True
-            for callback in (self.preview_poll, self.pending_resize):
+            for callback in (self.preview_poll, self.pending_resize, self.recovery_after):
                 if callback:
                     self.after_cancel(callback)
             self.preview_request = None
