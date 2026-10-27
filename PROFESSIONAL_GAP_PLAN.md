@@ -34,7 +34,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | --- | --- | --- |
 | P0 | True redaction | Stage 3 provides a bounded rasterized export: every source page is rebuilt from pixels, the selected rectangle is blacked out, and source objects are absent from the new PDF. This loses text/vector fidelity and does not erase the open source document or old sessions. Next: precise object-preserving redaction, independent viewer/forensic validation and sensitive-copy lifecycle. Never label visual whiteout secure. |
 | P0 | Crash recovery | Opt-in history-free snapshots and atomic writes are implemented. The current stage marks recovery files, rejects ordinary sessions as recovery destinations, stops updates if a snapshot is replaced, and allows explicit deletion of a selected marked snapshot. Next: corruption/restart UI acceptance and optional user-directed retention policy. No automatic cleanup. |
-| P1 | OCR | Bundled or explicitly installed local engine; selectable language, searchable text layer aligned with rotation/crop, progress/cancel, and bounded resource use. No document upload. |
+| P1 | OCR | Stage 5 adds bounded offline English searchable image-copy export with an app-scoped engine. Synthetic scanned text extracts. Next: portable UI acceptance, selectable languages, source-preserving text layers, progress/cancel, and native DLL license inventory. No document upload. |
 | P1 | Full forms | Existing text, simple choice and Yes/Off checkbox fields are supported with a field picker in stages 3–4. Next: complex choice options, custom button states, radio groups and appearance validation in independent viewers. XFA needs a separate decision. |
 | P1 | Annotation editing | Text notes can be edited and browsed across pages; native highlight annotations can be added and deleted. Later page-content edits may flatten them. Next: editable highlight geometry/colors and drawings with preservation through other edits. |
 | P1 | Bookmark navigation | Stage 3 adds browsing and page navigation. Next: rename, reorder and delete outline items; preserve destinations during page edits. |
@@ -48,8 +48,8 @@ image stamp is not a digital signature. No change here claims signature validati
 
 ## Offline OCR dependency decision
 
-This Windows environment has PDFium but no Tesseract executable, pytesseract or OCRmyPDF.
-No OCR engine was installed for these changes. Tesseract is [Apache-2.0 licensed](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE).
+The approved review preview contains an app-scoped Tesseract engine and English model.
+It does not install Tesseract system-wide. Tesseract is [Apache-2.0 licensed](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE).
 [OCRmyPDF's Windows instructions](https://ocrmypdf.readthedocs.io/en/latest/installation.html)
 call for a separate Tesseract installation and recommend Ghostscript for some PDF/A flows.
 Recommendation: use the [official Tesseract 5.5.3 Windows release](https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.3)
@@ -59,13 +59,14 @@ installer asset is 26,573,224 bytes (about 26.6 MB decimal). The
 [English traineddata](https://github.com/tesseract-ocr/tessdata_fast) is 4,113,088 bytes
 (about 4.1 MB); optional French, German and Spanish models are roughly 1.1, 1.5 and
 2.3 MB respectively. These are asset sizes before final ZIP compression and bundled
-DLL/license accounting; measure the final portable ZIP when implemented. Default to English
-and let users explicitly add supported language packs. Both the engine and fast models
-are Apache-2.0; retain their notices and review licenses of every packaged DLL.
+DLL/license accounting. The current OCR review ZIP is 77,559,819 bytes. English is the
+only bundled language; optional language selection requires further implementation.
+Both the engine and fast models are Apache-2.0; retain their notices and review licenses
+of every packaged DLL.
 
-This route can be packaged with Forge PDF without installing software system-wide, but
-it is a new third-party binary acquisition and distribution decision. After approval,
-prototype OCR on synthetic scans with deterministic offline tests, bounded time/memory,
-cancel/progress controls and searchable-layer alignment on rotated/cropped pages. Keep
+The approved app-scoped preview passed a synthetic scanned text extraction test. Before
+release, complete native DLL license inventory and add progress/cancel controls. The
+current export is a rasterized searchable image copy, so source PDF structure is lost.
+Keep
 Ghostscript out of the default runtime until a specific export need and licensing review
 justify it. No PDF content should be sent to a remote OCR service.

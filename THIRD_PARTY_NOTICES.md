@@ -18,3 +18,13 @@ must accompany any later binary distribution. Development tools are not applicat
 
 - cryptography: Apache-2.0 OR BSD-3-Clause, including bundled OpenSSL notices.
 - cffi and pycparser: MIT/BSD-style notices included in the binary support folder.
+
+Optional offline OCR preview bundle:
+
+- Tesseract 5.5.3 Windows engine: Apache-2.0,
+  https://github.com/tesseract-ocr/tesseract/releases/tag/5.5.3
+- English `tessdata_fast` trained model: Apache-2.0,
+  https://github.com/tesseract-ocr/tessdata_fast
+- The extracted Windows engine also contains Leptonica, ICU, and other native DLLs with
+  their own licenses. Inventory and include every required dependency notice before any
+  public binary release. The current local OCR bundle is a review preview only.

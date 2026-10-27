@@ -6,6 +6,8 @@ import io
 import math
 import os
 import re
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -351,6 +353,62 @@ class Document:
         output = stream.getvalue()
         if len(output) > MAX_BYTES:
             raise ValueError("Rasterized output exceeds the 50 MB PDF limit.")
+        write_copy_bytes(path, output, overwrite=overwrite)
+
+    def export_searchable_image_copy(
+        self, path: Path, overwrite: bool = False, ocr_dir: Path | None = None
+    ) -> None:
+        """Create an offline image copy with Tesseract's invisible searchable text.
+
+        This export intentionally discards source PDF objects and never changes the
+        open document. It is bounded because each page is rendered in memory.
+        """
+        if self.count > 20:
+            raise ValueError("OCR image export supports up to 20 pages.")
+        path = path.resolve()
+        if path.suffix.lower() != ".pdf":
+            raise ValueError("Save the document with a .pdf extension.")
+        self.check_destination(path)
+        bundle = ocr_dir or Path(sys.executable).resolve().parent / "Support" / "ocr"
+        executable = bundle / ("tesseract.exe" if sys.platform == "win32" else "tesseract")
+        trained = bundle / "tessdata" / "eng.traineddata"
+        if not executable.is_file() or not trained.is_file():
+            raise ValueError("Offline OCR English is unavailable in this build.")
+        writer = PdfWriter()
+        with tempfile.TemporaryDirectory(prefix="forge-pdf-ocr-") as directory:
+            temporary = Path(directory)
+            for index in range(self.count):
+                width, height = self.size(index)
+                if width * height * 4 > 4_000_000:
+                    raise ValueError("A page is too large for bounded OCR export.")
+                image = self.render(index, scale=2.0)
+                try:
+                    source = temporary / "page.png"
+                    result = temporary / "result"
+                    image.save(source, format="PNG")
+                    subprocess.run(
+                        [str(executable), str(source), str(result), "-l", "eng", "pdf"],
+                        check=True,
+                        timeout=120,
+                        capture_output=True,
+                        env={**os.environ, "TESSDATA_PREFIX": str(bundle / "tessdata")},
+                        cwd=temporary,
+                    )
+                    if not result.with_suffix(".pdf").is_file():
+                        raise ValueError(
+                            "OCR engine did not create a PDF; check its language and PDF configuration files."
+                        )
+                    reader = PdfReader(result.with_suffix(".pdf"))
+                    if len(reader.pages) != 1:
+                        raise ValueError("OCR did not return one page.")
+                    writer.add_page(reader.pages[0])
+                    source.unlink()
+                    result.with_suffix(".pdf").unlink()
+                finally:
+                    image.close()
+        output = serialize(writer)
+        if len(output) > MAX_BYTES:
+            raise ValueError("OCR output exceeds the 50 MB PDF limit.")
         write_copy_bytes(path, output, overwrite=overwrite)
 
     def clear_footer(self, pixels: int = 5) -> None:

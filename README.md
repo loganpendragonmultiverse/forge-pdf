@@ -23,7 +23,8 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 ## Features
 
 - Find literal document text across pages with case and whole-word options, a result list,
-  and next/previous matches. Image-only pages need external OCR.
+  and next/previous matches. Use the optional offline OCR bundle to export a searchable
+  image copy of an image-only PDF.
 - Add text with a selected local TrueType font and check the entered text for missing glyphs.
 - Place PNG/JPEG image stamps with a drag preview and preserved transparency.
 - Explicitly save/reopen a self-contained editing session, including bounded Undo history.
@@ -44,6 +45,9 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 - Add a numbered or prefixed page-label range when the source has no custom labels;
   the pages panel displays the resulting labels.
 - Save an AES-256 password-encrypted PDF copy through **Page actions → Save encrypted copy**.
+- Use **Page actions → OCR searchable image copy** in the Windows preview with the
+  app-scoped English OCR bundle. It processes up to 20 pages locally and adds an
+  invisible text layer to a new image PDF. Review recognition before sharing.
 - Use **Page actions → Rasterized redacted export** to drag a blacked-out area into a
   new image-only PDF. The export rebuilds every page from rendered pixels and discards
   source text, forms, links, annotations, bookmarks, attachments and metadata.
@@ -121,7 +125,7 @@ install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build c
 
 ## Limitations
 
-- Adds content over existing pages; does not rewrite existing paragraphs, perform OCR,
+- Adds content over existing pages; does not rewrite existing paragraphs,
   preserve vector/text content during redacted export, validate signatures, or support every AcroForm control. Form filling
   requires existing editable fields; complex choice options, radio groups, custom checkbox
   states, field creation, and XFA forms are unsupported.
@@ -132,6 +136,10 @@ install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build c
   The open source document and any
   prior editing sessions may still hold the unredacted material. Inspect the exported
   image-only PDF and manage original copies separately before sharing.
+- OCR image export also supports up to 20 bounded pages. It loses vector fidelity,
+  forms, links, annotations, bookmarks, metadata, accessibility structure and signatures.
+  The copy is unencrypted and the original remains open and unchanged. Recognition may
+  be inaccurate, especially for handwriting, complex layouts and non-English text.
 - On an edited page, visible annotations and form fields become page content before
   new marks are added. Links remain interactive; untouched pages retain their annotations.
 - Editing signed PDFs invalidates their cryptographic signatures. A normal **Save a copy** of
@@ -144,7 +152,7 @@ install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build c
   selected rectangle with their aspect ratio retained. Stamps are visual images, not signatures.
 - Text search is literal and defaults to case-insensitive, capped at 1000 matches and
   256 query characters. Optional case and whole-word matching is available. Search
-  does not perform OCR or highlight exact glyph positions on the canvas.
+  does not OCR the open document or highlight exact glyph positions on the canvas.
 - Supports up to 50 MB and 500 pages, including merged output. Complex files can pause
   the interface during processing. This app is intended for modest everyday documents.
 - Undo keeps up to 30 edits within a 100 MB snapshot budget. Recovery is opt-in and

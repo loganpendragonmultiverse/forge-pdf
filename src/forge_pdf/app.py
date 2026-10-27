@@ -338,6 +338,7 @@ class Editor(tk.Tk):
         )
         menu.add_command(label="Review native highlights…", command=self.review_native_highlights)
         menu.add_command(label="Save encrypted copy…", command=self.save_encrypted)
+        menu.add_command(label="OCR searchable image copy…", command=self.export_ocr)
         menu.add_command(
             label="Rasterized redacted export…", command=lambda: self.set_mode("raster_redact")
         )
@@ -900,6 +901,43 @@ class Editor(tk.Tk):
                     first - 1, last - 1, prefix, style.strip().lower(), start
                 )
             )
+
+    def export_ocr(self):
+        if not self.doc:
+            return False
+        if not messagebox.askyesno(
+            "OCR searchable image copy",
+            "Create a new searchable image PDF with offline English OCR? "
+            "The current file stays open. The copy loses vector quality, forms, links, "
+            "bookmarks, annotations, metadata, accessibility structure and signatures. "
+            "It is unencrypted and limited to 20 pages. Check recognized text before sharing.",
+            parent=self,
+        ):
+            return False
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Save searchable image PDF",
+            initialfile=f"{self.path.stem}-searchable.pdf" if self.path else "searchable.pdf",
+            initialdir=self.path.parent if self.path else None,
+            defaultextension=".pdf",
+            filetypes=[("PDF documents", "*.pdf")],
+            confirmoverwrite=True,
+        )
+        if not path:
+            return False
+        try:
+            self.configure(cursor="watch")
+            self.update_idletasks()
+            self.doc.export_searchable_image_copy(Path(path), overwrite=Path(path).exists())
+            self.status.configure(
+                text=f"OCR copy saved: {path}. Check recognized text before sharing."
+            )
+            return True
+        except Exception as exc:
+            self.error(exc)
+            return False
+        finally:
+            self.configure(cursor="")
 
     def export_redacted(self, box):
         if not messagebox.askyesno(
