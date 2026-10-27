@@ -57,7 +57,12 @@ def _work(connection, memory_name, length, role, params, cancel_event):
                     json.dumps({"status": "progress", "done": done, "total": total}).encode()
                 )
 
-            document.export_searchable_image_copy(
+            export = (
+                document.export_searchable_layer_copy
+                if params.get("preserve_pages")
+                else document.export_searchable_image_copy
+            )
+            export(
                 Path(params["path"]),
                 overwrite=params["overwrite"],
                 ocr_dir=Path(params["ocr_dir"]) if params.get("ocr_dir") else None,

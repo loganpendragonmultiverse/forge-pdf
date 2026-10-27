@@ -51,6 +51,11 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
   a separate worker with progress and Cancel; installed language files can be selected.
   Review recognition before sharing. The bundled OCR binary remains private review
   material pending native dependency license clearance.
+- Use **Page actions → OCR text layer on scanned pages** for a separate copy that
+  retains original page graphics, links, bookmarks and metadata. This is limited
+  to 20 simple unrotated, uncropped image pages with no existing text, forms or
+  signatures. It adds invisible searchable text, stays offline, and leaves the
+  open source unchanged. Check placement and recognition before sharing.
 - Use **Page actions → Rasterized redacted export** to drag a blacked-out area into a
   new image-only PDF. The export rebuilds every page from rendered pixels and discards
   source text, forms, links, annotations, bookmarks, attachments and metadata.

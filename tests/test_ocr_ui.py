@@ -60,3 +60,41 @@ def test_ocr_progress_dialog_and_cancel(tmp_path, monkeypatch):
         assert "cancelled" in app.status.cget("text")
     finally:
         app.destroy()
+
+
+def test_ocr_text_layer_dialog_dispatches_preserving_mode(tmp_path, monkeypatch):
+    app = Editor()
+    try:
+        app.doc = Document(make_scan())
+        app.path = tmp_path / "scan.pdf"
+        bundle = tmp_path / "Support" / "ocr" / "tessdata"
+        bundle.mkdir(parents=True)
+        (bundle / "eng.traineddata").write_bytes(b"language available")
+        monkeypatch.setattr("forge_pdf.app.sys.executable", str(tmp_path / "python.exe"))
+        prompts = []
+        monkeypatch.setattr(
+            "forge_pdf.app.messagebox.askyesno",
+            lambda title, message, **kwargs: prompts.append((title, message)) or True,
+        )
+        monkeypatch.setattr(
+            "forge_pdf.app.filedialog.asksaveasfilename",
+            lambda **kwargs: str(tmp_path / "layer.pdf"),
+        )
+        future = FakeOcrFuture()
+        submitted = []
+        monkeypatch.setattr(
+            app.ocr_executor,
+            "submit",
+            lambda data, params: submitted.append(params) or future,
+        )
+        assert app.export_ocr(preserve_pages=True)
+        assert submitted[0]["preserve_pages"] is True
+        assert "text layer" in prompts[0][0].lower()
+        assert "forms or signatures" in prompts[0][1]
+        dialog = next(w for w in app.winfo_children() if isinstance(w, tk.Toplevel))
+        future.finished = True
+        time.sleep(0.12)
+        app.update()
+        assert not dialog.winfo_exists()
+    finally:
+        app.destroy()

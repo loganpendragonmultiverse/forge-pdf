@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw, ImageFont
+from PIL import ImageChops
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
@@ -133,4 +134,80 @@ def test_ocr_cancel_after_first_page_keeps_existing_file(tmp_path):
             cancelled=lambda: (1, 2) in progress,
         )
     assert progress[:2] == [(0, 2), (1, 2)]
+    assert target.read_bytes() == b"keep"
+
+
+def test_ocr_text_layer_preserves_page_and_navigation(tmp_path):
+    bundle = os.environ.get("FORGE_PDF_TEST_OCR_DIR")
+    if not bundle:
+        pytest.skip("App-scoped OCR engine not present in this environment")
+    writer = PdfWriter(clone_from=io.BytesIO(make_scan()))
+    writer.add_outline_item("Scan", 0)
+    writer.add_uri(0, "https://example.com", (10, 10, 100, 30))
+    writer.add_metadata({"/Title": "Synthetic scan"})
+    stream = io.BytesIO()
+    writer.write(stream)
+    original = stream.getvalue()
+    document = Document(original)
+    target = tmp_path / "preserved.pdf"
+    document.export_searchable_layer_copy(target, ocr_dir=Path(bundle))
+    reader = PdfReader(target)
+    assert "FORGE OCR SAMPLE" in reader.pages[0].extract_text().upper()
+    assert reader.metadata.title == "Synthetic scan"
+    assert reader.outline[0].title == "Scan"
+    assert reader.pages[0]["/Annots"][0].get_object()["/A"]["/URI"] == "https://example.com"
+    assert reader.pages[0]["/Resources"]["/XObject"]
+    before = document.render(0, 1)
+    after = Document(target.read_bytes()).render(0, 1)
+    try:
+        assert ImageChops.difference(before, after).getbbox() is None
+    finally:
+        before.close()
+        after.close()
+    assert document.data == original
+
+
+def test_ocr_text_layer_rejects_complex_pages_and_preserves_target(tmp_path):
+    bundle = os.environ.get("FORGE_PDF_TEST_OCR_DIR")
+    if not bundle:
+        pytest.skip("App-scoped OCR engine not present in this environment")
+    target = tmp_path / "existing.pdf"
+    target.write_bytes(b"keep")
+    for mutation in ("rotate", "crop", "text", "form"):
+        writer = PdfWriter(clone_from=io.BytesIO(make_scan()))
+        if mutation == "rotate":
+            writer.pages[0].rotate(90)
+        elif mutation == "crop":
+            writer.pages[0].cropbox.right -= 10
+        elif mutation == "text":
+            from reportlab.pdfgen.canvas import Canvas
+
+            text = io.BytesIO()
+            canvas = Canvas(text, pagesize=(750, 200))
+            canvas.drawString(20, 20, "already searchable")
+            canvas.save()
+            writer.pages[0].merge_page(PdfReader(text).pages[0])
+        else:
+            from pypdf.generic import DictionaryObject, NameObject
+
+            writer._root_object[NameObject("/AcroForm")] = DictionaryObject()
+        stream = io.BytesIO()
+        writer.write(stream)
+        with pytest.raises(ValueError):
+            Document(stream.getvalue()).export_searchable_layer_copy(
+                target, overwrite=True, ocr_dir=Path(bundle)
+            )
+        assert target.read_bytes() == b"keep"
+
+
+def test_ocr_text_layer_cancel_keeps_existing_target(tmp_path):
+    bundle = os.environ.get("FORGE_PDF_TEST_OCR_DIR")
+    if not bundle:
+        pytest.skip("App-scoped OCR engine not present in this environment")
+    target = tmp_path / "existing.pdf"
+    target.write_bytes(b"keep")
+    with pytest.raises(ValueError, match="cancelled"):
+        Document(make_scan()).export_searchable_layer_copy(
+            target, overwrite=True, ocr_dir=Path(bundle), cancelled=lambda: True
+        )
     assert target.read_bytes() == b"keep"

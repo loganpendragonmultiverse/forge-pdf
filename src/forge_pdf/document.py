@@ -452,6 +452,157 @@ class Document:
             raise ValueError("OCR output exceeds the 50 MB PDF limit.")
         write_copy_bytes(path, output, overwrite=overwrite)
 
+    def export_searchable_layer_copy(
+        self,
+        path: Path,
+        overwrite: bool = False,
+        ocr_dir: Path | None = None,
+        language: str = "eng",
+        progress: Callable[[int, int], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> None:
+        """Add invisible OCR text to a copy of simple, image-based PDF pages.
+
+        The original PDF is cloned so graphics, links and outlines are retained.
+        Refuse complex geometry, forms, signatures and pages with existing text
+        rather than risk a misleading or misaligned OCR layer.
+        """
+        if self.count > 20:
+            raise ValueError("OCR text-layer export supports up to 20 pages.")
+        path = path.resolve()
+        if path.suffix.lower() != ".pdf":
+            raise ValueError("Save the document with a .pdf extension.")
+        self.check_destination(path)
+        bundle = ocr_dir or Path(sys.executable).resolve().parent / "Support" / "ocr"
+        executable = bundle / ("tesseract.exe" if sys.platform == "win32" else "tesseract")
+        if not re.fullmatch(r"[a-z0-9_]{2,32}", language):
+            raise ValueError("Choose an installed OCR language code.")
+        if (
+            not executable.is_file()
+            or not (bundle / "tessdata" / f"{language}.traineddata").is_file()
+        ):
+            raise ValueError(f"Offline OCR language {language} is unavailable in this build.")
+        writer = self.writer()
+        root = writer._root_object
+        if "/AcroForm" in root or "/Perms" in root:
+            raise ValueError("OCR text-layer export does not support forms or signed PDFs.")
+        for page in writer.pages:
+            box = page.mediabox
+            crop = page.cropbox
+            if (
+                page.get("/Rotate", 0) % 360
+                or page.get("/UserUnit", 1) != 1
+                or tuple(float(v) for v in box) != tuple(float(v) for v in crop)
+                or float(box.left) != 0
+                or float(box.bottom) != 0
+            ):
+                raise ValueError(
+                    "OCR text-layer export needs unrotated, uncropped pages at origin zero."
+                )
+            if page.extract_text().strip():
+                raise ValueError(
+                    "OCR text-layer export needs pages without existing searchable text."
+                )
+            resources = page.get("/Resources")
+            xobjects = resources.get_object().get("/XObject", {}) if resources else {}
+            if not any(
+                item.get_object().get("/Subtype") == "/Image"
+                for item in (
+                    xobjects.get_object() if hasattr(xobjects, "get_object") else xobjects
+                ).values()
+            ):
+                raise ValueError("OCR text-layer export needs an image on every page.")
+        if progress:
+            progress(0, self.count)
+        with tempfile.TemporaryDirectory(prefix="forge-pdf-ocr-") as directory:
+            temporary = Path(directory)
+            for index, page in enumerate(writer.pages):
+                if cancelled and cancelled():
+                    raise ValueError("OCR cancelled.")
+                width, height = self.size(index)
+                if width * height * 4 > 4_000_000:
+                    raise ValueError("A page is too large for bounded OCR export.")
+                image = self.render(index, scale=2.0)
+                try:
+                    source = temporary / "page.png"
+                    result = temporary / "layer"
+                    image.save(source, format="PNG")
+                    dpi = round(image.width * 72 / width)
+                    process = subprocess.Popen(
+                        [
+                            str(executable),
+                            str(source),
+                            str(result),
+                            "-l",
+                            language,
+                            "--dpi",
+                            str(dpi),
+                            "-c",
+                            "textonly_pdf=1",
+                            "pdf",
+                        ],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        env={**os.environ, "TESSDATA_PREFIX": str(bundle / "tessdata")},
+                        cwd=temporary,
+                    )
+                    started = time.monotonic()
+                    try:
+                        while True:
+                            if cancelled and cancelled():
+                                raise ValueError("OCR cancelled.")
+                            if time.monotonic() - started > 120:
+                                raise TimeoutError("OCR page exceeded the 120-second limit.")
+                            try:
+                                _, stderr = process.communicate(timeout=0.1)
+                                break
+                            except subprocess.TimeoutExpired:
+                                continue
+                    except BaseException:
+                        process.terminate()
+                        try:
+                            process.communicate(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.communicate()
+                        raise
+                    if process.returncode or not result.with_suffix(".pdf").is_file():
+                        message = (
+                            stderr.decode(errors="replace")[:300]
+                            if process.returncode
+                            else "no PDF"
+                        )
+                        raise ValueError(f"OCR engine failed on page {index + 1}: {message}")
+                    layer_reader = PdfReader(result.with_suffix(".pdf"))
+                    if len(layer_reader.pages) != 1:
+                        raise ValueError("OCR did not return one text-layer page.")
+                    layer = layer_reader.pages[0]
+                    layer_width, layer_height = (
+                        float(layer.mediabox.width),
+                        float(layer.mediabox.height),
+                    )
+                    if abs(layer_width - width) > 1 or abs(layer_height - height) > 1:
+                        raise ValueError("OCR text layer does not match source page size.")
+                    if layer.get("/Resources", {}).get("/XObject"):
+                        raise ValueError(
+                            "OCR engine returned image content instead of a text-only layer."
+                        )
+                    page.merge_transformed_page(
+                        layer, Transformation().scale(width / layer_width, height / layer_height)
+                    )
+                    source.unlink()
+                    result.with_suffix(".pdf").unlink()
+                    if progress:
+                        progress(index + 1, self.count)
+                finally:
+                    image.close()
+        if cancelled and cancelled():
+            raise ValueError("OCR cancelled.")
+        output = serialize(writer)
+        if len(output) > MAX_BYTES:
+            raise ValueError("OCR output exceeds the 50 MB PDF limit.")
+        write_copy_bytes(path, output, overwrite=overwrite)
+
     def clear_footer(self, pixels: int = 5) -> None:
         if not isinstance(pixels, int) or isinstance(pixels, bool) or not 1 <= pixels <= 10000:
             raise ValueError("Enter a footer height from 1 to 10000 pixels.")

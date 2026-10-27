@@ -354,6 +354,10 @@ class Editor(tk.Tk):
         menu.add_command(label="Save encrypted copy…", command=self.save_encrypted)
         menu.add_command(label="OCR searchable image copy…", command=self.export_ocr)
         menu.add_command(
+            label="OCR text layer on scanned pages…",
+            command=lambda: self.export_ocr(preserve_pages=True),
+        )
+        menu.add_command(
             label="Rasterized redacted export…", command=lambda: self.set_mode("raster_redact")
         )
         actions_menu = ttk.Menubutton(
@@ -916,7 +920,7 @@ class Editor(tk.Tk):
                 )
             )
 
-    def export_ocr(self):
+    def export_ocr(self, preserve_pages=False):
         if not self.doc:
             return False
         if self.ocr_future is not None and not self.ocr_future.done():
@@ -941,19 +945,32 @@ class Editor(tk.Tk):
             if language not in languages:
                 self.error(ValueError("Choose one of the installed OCR languages."))
                 return False
+        title = "OCR text layer copy" if preserve_pages else "OCR searchable image copy"
+        warning = (
+            "This copies the original page objects and adds invisible OCR text. It accepts "
+            "only unrotated, uncropped image pages without existing text, forms or signatures. "
+            "Graphics, links and bookmarks are retained, but the copy is unencrypted and "
+            "limited to 20 pages. Check text placement and recognition before sharing."
+            if preserve_pages
+            else "The copy loses vector quality, forms, links, bookmarks, annotations, metadata, "
+            "accessibility structure and signatures. It is unencrypted and limited to 20 pages. "
+            "Check recognized text before sharing."
+        )
         if not messagebox.askyesno(
-            "OCR searchable image copy",
-            f"Create a new searchable image PDF with offline {language} OCR? "
-            "The current file stays open. The copy loses vector quality, forms, links, "
-            "bookmarks, annotations, metadata, accessibility structure and signatures. "
-            "It is unencrypted and limited to 20 pages. Check recognized text before sharing.",
+            title,
+            f"Create a new PDF with offline {language} OCR? The current file stays open. "
+            + warning,
             parent=self,
         ):
             return False
         path = filedialog.asksaveasfilename(
             parent=self,
-            title="Save searchable image PDF",
-            initialfile=f"{self.path.stem}-searchable.pdf" if self.path else "searchable.pdf",
+            title="Save OCR text-layer PDF" if preserve_pages else "Save searchable image PDF",
+            initialfile=f"{self.path.stem}-ocr-layer.pdf"
+            if preserve_pages and self.path
+            else f"{self.path.stem}-searchable.pdf"
+            if self.path
+            else "searchable.pdf",
             initialdir=self.path.parent if self.path else None,
             defaultextension=".pdf",
             filetypes=[("PDF documents", "*.pdf")],
@@ -964,7 +981,12 @@ class Editor(tk.Tk):
         try:
             self.ocr_future = self.ocr_executor.submit(
                 self.doc.data,
-                {"path": path, "overwrite": Path(path).exists(), "language": language},
+                {
+                    "path": path,
+                    "overwrite": Path(path).exists(),
+                    "language": language,
+                    "preserve_pages": preserve_pages,
+                },
             )
         except Exception as exc:
             self.error(exc)

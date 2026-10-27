@@ -47,3 +47,12 @@ synthetic pages and inspect retained links/forms/annotation appearances. A succe
 preflight or test fixture is not a guarantee for arbitrary documents, fonts or accessibility tools.
 Screen-reader, physical small-device, large-file responsiveness and hostile-PDF isolation remain
 unverified. Do not advertise whiteout, subset export or image stamps as security redaction.
+
+## Source-preserving OCR review stage
+
+Synthetic source scans verify extracted text, unchanged 100% rendering, retained
+links, bookmarks and metadata, and refusal of rotated/cropped/text/form inputs.
+The OCR engine tests require FORGE_PDF_TEST_OCR_DIR to point at a complete
+app-scoped bundle; CI without it skips engine integration tests. Tk dialog tests
+run in Windows CI. Independent viewer, other DPI, rotated/cropped, and screen
+reader acceptance remain open. Do not present this as tagged PDF accessibility.

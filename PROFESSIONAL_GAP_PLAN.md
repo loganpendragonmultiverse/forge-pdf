@@ -34,7 +34,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | --- | --- | --- |
 | P0 | True redaction | Stage 3 provides a bounded rasterized export: every source page is rebuilt from pixels, the selected rectangle is blacked out, and source objects are absent from the new PDF. This loses text/vector fidelity and does not erase the open source document or old sessions. Next: precise object-preserving redaction, independent viewer/forensic validation and sensitive-copy lifecycle. Never label visual whiteout secure. |
 | P0 | Crash recovery | Opt-in history-free snapshots and atomic writes are implemented. The current stage marks recovery files, rejects ordinary sessions as recovery destinations, stops updates if a snapshot is replaced, and allows explicit deletion of a selected marked snapshot. Next: corruption/restart UI acceptance and optional user-directed retention policy. No automatic cleanup. |
-| P1 | OCR | Bounded offline searchable image-copy export, separate worker, per-page progress, cancellation and selection among installed language files are implemented. The source-built private preview passed synthetic OCR and a visible Windows export. Next: source-preserving text layers and redistribution/compatibility gates. No document upload. |
+| P1 | OCR | Bounded offline searchable image-copy export, separate worker, per-page progress, cancellation and selection among installed language files are implemented. The source-built private preview passed synthetic OCR and a visible Windows export. A separate bounded text-layer copy now preserves original page objects for simple unrotated, uncropped image-only pages, with synthetic visual/text/navigation tests. Next: mixed and rotated pages, independent-viewer acceptance, and redistribution/compatibility gates. No document upload. |
 | P1 | Full forms | Existing text, simple choice and Yes/Off checkbox fields are supported with a field picker in stages 3–4. Next: complex choice options, custom button states, radio groups and appearance validation in independent viewers. XFA needs a separate decision. |
 | P1 | Annotation editing | Text notes can be edited and browsed across pages; native highlight annotations can be added and deleted. Later page-content edits may flatten them. Next: editable highlight geometry/colors and drawings with preservation through other edits. |
 | P1 | Bookmark navigation | Stage 3 adds browsing and page navigation. Next: rename, reorder and delete outline items; preserve destinations during page edits. |
@@ -71,13 +71,13 @@ deliberately.
 
 ## Remaining architecture stages
 
-1. **Source-preserving OCR:** generate invisible text with coordinates from
-   Tesseract output and overlay it on copies of source pages. Preserve source
-   vectors, links, bookmarks and annotations where possible; warn when a
-   digital signature would be invalidated. The existing pypdf/ReportLab stack
-   is the first candidate, but rotations, crop boxes, deskew, mixed text and
-   reading order need independent-viewer tests. Keep the current rasterized
-   path available for cases that fail those gates. No cloud OCR.
+1. **Source-preserving OCR:** a first bounded export clones simple image-based
+   pages and merges Tesseract text-only PDF layers. It rejects forms, signatures,
+   existing text, rotations, crop boxes and altered page origins. Synthetic tests
+   verify extracted text, pixel-identical rendering at 100%, and retained links,
+   bookmarks and metadata. Next: mixed text, rotations, crop boxes, deskew and
+   reading-order validation in independent viewers. Keep the rasterized path for
+   unsupported inputs. No cloud OCR.
 2. **Richer forms:** extend AcroForm handling with radio groups, custom button
    states, multi-select choice options and appearance streams. Validate values
    and rendering in independent PDF viewers. XFA is a separate architecture
@@ -100,6 +100,6 @@ deliberately.
    behavior on synthetic large files before increasing the 50 MB/500-page
    limits. Keep recovery cleanup user-controlled and test corrupt snapshots.
 
-The stages above are plans, not implemented features. Signature validation
+The remaining work within these stages is planned, not implemented. Signature validation
 also requires a separate trust-store and revocation design. A visual stamp
 does not establish a digital signature.
