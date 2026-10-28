@@ -14,9 +14,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 ENGLISH_SHA256 = "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
-OCR_ENGINE_SHA256 = "2df0d8207b34b59dd95f93c0e5cda5eae8d626519d4dc7206a899cc23a82c5b8"
+OCR_ENGINE_SHA256 = "8d6d753e54c31b9cdd938328a5f0f6e5ad076bb78a74bc6a22da4e6bf667913f"
 OCR_CONFIG_SHA256 = "88630f865cdaa38ce52ad1688f51ed55596f125f85536ec29b1b11fed721545b"
 OCR_NOTICE_SHA256 = {
+    "toolchain/GCC-COPYING.RUNTIME": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+    "toolchain/GCC-COPYING3": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+    "toolchain/MinGW-CRT-COPYING": "99a69660981156c21336fdb5661f89341b013c94e4bf9e1c7467b4745718397f",
+    "toolchain/MinGW-CRT-Mingw.txt": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1",
+    "toolchain/MinGW-CRT-runtime.txt": "1db8da07b436c68833c0673ffeed3d9fcb2526047f3820b81661865dfedc79a1f",
+    "toolchain/Winpthreads-COPYING": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177",
     "LICENSE": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
     "tessdata_fast-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "dependencies/giflib.txt": "0c9b7990ecdca88b676db232c226548ac408b279f550d424d996f0d83591dd8e",
@@ -42,7 +48,7 @@ def verify_ocr_notices(ocr_bundle: Path) -> None:
 
 def verify_ocr_bundle(ocr_bundle: Path) -> None:
     verify_ocr_notices(ocr_bundle)
-    if list(ocr_bundle.glob("*.dll")):
+    if list(ocr_bundle.rglob("*.dll")):
         raise ValueError("Unexpected OCR DLL; only the audited static engine is allowed.")
     for name, digest in (
         ("tesseract.exe", OCR_ENGINE_SHA256),

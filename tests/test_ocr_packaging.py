@@ -9,7 +9,7 @@ from tools import build_windows
 def test_private_ocr_bundle_requires_all_notices(tmp_path, monkeypatch):
     doc = tmp_path / "doc"
     doc.mkdir()
-    with pytest.raises(ValueError, match="tessdata_fast-LICENSE.txt"):
+    with pytest.raises(ValueError, match="GCC-COPYING.RUNTIME"):
         build_windows.verify_ocr_notices(tmp_path)
     (doc / "LICENSE").write_text("Tesseract")
     (doc / "tessdata_fast-LICENSE.txt").write_text("tessdata")
@@ -27,6 +27,11 @@ def test_private_ocr_bundle_requires_all_notices(tmp_path, monkeypatch):
         "zlib",
     ):
         (dependency / f"{name}.txt").write_text(name)
+    for name in build_windows.OCR_NOTICE_SHA256:
+        if name.startswith("toolchain/"):
+            target = doc / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(name)
     monkeypatch.setattr(
         build_windows,
         "OCR_NOTICE_SHA256",
@@ -74,6 +79,24 @@ def test_private_ocr_bundle_rejects_extra_dll_and_changed_engine(tmp_path, monke
     with pytest.raises(ValueError, match="Unexpected OCR DLL"):
         build_windows.verify_ocr_bundle(tmp_path)
     (tmp_path / "unexpected.dll").unlink()
+    (tmp_path / "doc" / "nested.dll").write_bytes(b"unreviewed")
+    with pytest.raises(ValueError, match="Unexpected OCR DLL"):
+        build_windows.verify_ocr_bundle(tmp_path)
+    (tmp_path / "doc" / "nested.dll").unlink()
     (tmp_path / "tesseract.exe").write_bytes(b"changed")
     with pytest.raises(ValueError, match="tesseract.exe"):
         build_windows.verify_ocr_bundle(tmp_path)
+
+
+def test_private_ocr_bundle_requires_mingw_toolchain_notices(tmp_path):
+    for name in (
+        "toolchain/GCC-COPYING.RUNTIME",
+        "toolchain/GCC-COPYING3",
+        "toolchain/MinGW-CRT-COPYING",
+        "toolchain/MinGW-CRT-Mingw.txt",
+        "toolchain/MinGW-CRT-runtime.txt",
+        "toolchain/Winpthreads-COPYING",
+    ):
+        assert name in build_windows.OCR_NOTICE_SHA256
+        with pytest.raises(ValueError, match=name.split("/")[-1]):
+            build_windows.verify_ocr_notices(tmp_path)

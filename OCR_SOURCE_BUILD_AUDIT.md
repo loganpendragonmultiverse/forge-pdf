@@ -1,93 +1,25 @@
 # Source-built Windows OCR candidate (private review)
 
-The private source-built OCR preview uses Tesseract 5.5.3, compiled on Windows 11
-with the preinstalled Visual Studio 2022 Build Tools 17.14/MSVC 14.44.35207.
-The Tesseract source is the official tag `5.5.3`, commit
-`db0ec62f81b0737fbbe184d8fea40af5738f8eef`. Dependencies came from
-the Microsoft vcpkg registry at baseline
-`3af1d1e60af2b2abf55760538cd607829029b07a`, using
-`x64-windows-static`, Leptonica with default features disabled, and
-`WIN32_MT_BUILD=ON`. Tesseract training tools, curl, archive and graphics
-features were disabled. This is an isolated application build, not a
-system-wide installation.
+The current candidate replaces only the optional app-scoped OCR executable. It uses the official Tesseract 5.5.3 tag at commit `db0ec62f81b0737fbbe184d8fea40af5738f8eef` and the official tessdata_fast English model at commit `87416418657359cb625c412a48b6e1d6d41c29bd`. The model SHA-256 is `7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2`. The PDF config SHA-256 is `88630f865cdaa38ce52ad1688f51ed55596f125f85536ec29b1b11fed721545b`.
 
-Pinned dependency versions: giflib 5.2.2, libjpeg-turbo 3.1.2, Leptonica
-1.85.0, liblzma 5.8.1, libpng 1.6.50, libwebp 1.6.0, OpenJPEG 2.5.4,
-libtiff 4.7.1 and zlib 1.3.1. The private bundle contains each dependency's
-vcpkg copyright notice under `doc/dependencies/`, Tesseract's license,
-and the tessdata_fast license. The English model is from official
-`tessdata_fast` commit `87416418657359cb625c412a48b6e1d6d41c29bd`,
-SHA-256 `7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2`.
+## Isolated MinGW build
 
-The resulting `tesseract.exe` is 5,341,696 bytes, SHA-256
-`2df0d8207b34b59dd95f93c0e5cda5eae8d626519d4dc7206a899cc23a82c5b8`.
-`dumpbin /dependents` reports only `KERNEL32.dll`; no external native
-DLLs or C++ redistributable are required by this executable. The bundle
-has 14 files totalling 9,502,965 bytes. `tesseract --version` reports
-5.5.3 and all five synthetic OCR tests passed against this bundle on
-Windows.
+The official MSYS2 archive `msys2-base-x86_64-20260927.tar.zst` had SHA-256 `8a2095647afbf799d113d0cae35f7544589d059819042635504e75bd2179bd02`, matching its official release digest. It was extracted to a temporary directory without changing system defaults. Its signed UCRT64 packages supplied GCC 16.2.0-6, MinGW CRT/headers/libwinpthread `14.0.0.r569.g34eeafb7d-1`, CMake 4.4.4-4 and Ninja 1.13.2-1.
 
-This evidence does not certify legal redistribution or all target Windows
-versions. Keep the candidate private until the complete packaged app is
-tested, notices are independently reviewed, and the release gate is approved.
-The older UB Mannheim installer-derived preview with 55 DLLs remains
-private and must not be published.
+The existing vcpkg registry baseline `3af1d1e60af2b2abf55760538cd607829029b07a` and triplet `x64-mingw-static` built Leptonica 1.85.0 with default features off. The installed package graph included giflib 5.2.2, libjpeg-turbo 3.1.2, liblzma 5.8.1, libpng 1.6.50, libwebp 1.6.0, OpenJPEG 2.5.4, libtiff 4.7.1 and zlib 1.3.1. vcpkg CMake helpers were build-time tools.
 
-## Rebuild inputs
+Tesseract was configured Release with training tools, graphics, curl, libarchive, OpenMP, LTO and native CPU tuning disabled. The executable was linked with `-static -static-libgcc -static-libstdc++`. The resulting `tesseract.exe` is 13,176,231 bytes, SHA-256 `8d6d753e54c31b9cdd938328a5f0f6e5ad076bb78a74bc6a22da4e6bf667913f`. Its PE imports are `KERNEL32.dll` and Windows `api-ms-win-crt-*` API sets. No OCR, GCC, MinGW or MSVC runtime DLL is bundled or imported. The linker map SHA-256 is `b4c3dfc531c1bfa6010cef5051ff2517d6de3284721bace7570e5578ece959d3`; it names static `libgcc.a`, `libgcc_eh.a`, `libstdc++.a`, MinGW CRT, `libpthread.a` and the image libraries above. `libmsvcrt.a` appears as an import archive in the map, but the PE does not import `msvcrt.dll`.
 
-The vcpkg manifest is `tools/ocr-vcpkg.json`. Build the official Tesseract
-tag with CMake's Visual Studio 2022 x64 generator, the vcpkg toolchain and
-triplet `x64-windows-static`, setting `WIN32_MT_BUILD=ON`,
-`BUILD_TRAINING_TOOLS=OFF`, `GRAPHICS_DISABLED=ON`,
-`DISABLE_ARCHIVE=ON` and `DISABLE_CURL=ON`. Install the Release target
-into a temporary staging directory. Package only its `tesseract.exe`,
-the pinned English model, PDF config and the licenses described above.
-The manifest and source pins are build inputs; the binary itself is not
-checked into Git.
+The candidate includes pinned upstream notices for Tesseract, tessdata_fast, all nine image-library packages, GCC GPL and Runtime Library Exception, MinGW CRT and winpthreads. The build script verifies each file's SHA-256 and rejects any OCR DLL at any depth. The standalone OCR folder has no OCR DLL. The GCC Runtime Library Exception and MSYS2 package license declarations are evidence for this route; independent review of the complete final notice set remains a release gate.
 
+## Review evidence and acceptance
 
-## Link and toolset evidence
+The private engine bundle is Library file `libfile_06ee09fcc4f08191b2d05961a7c42acf`, version 0, SHA-256 `24d2cbba90a0b437c20a5d2ee2995f912e6a535fb5951ed869ab5e7911f36cd4`. Build logs, exact installed status and ABI inventory, CMake cache, link map and PE imports are Library file `libfile_173ab7bdd49c8191a4a4023c8aad4dfc`, version 0, SHA-256 `e7dd782e18bb187526c8f2dee8c20ea61a26f9676b7530a60e1e4cfd945fd35b`. The companion review report is Library file `libfile_48efede3a8448191bf7aa5ee6ee6de2b`, version 0.
 
-The task-local build evidence archive retains the vcpkg installed-status
-records with package ABI hashes, `tesseract.vcxproj`, the Release linker
-command and the exact import list. The linker command names static
-`TIFF.LIB`, `LZMA.LIB`, `JPEG.LIB`, `ZLIB.LIB`,
-`LEPTONICA-1.85.0.LIB`, `GIF.LIB`, `OPENJP2.LIB`,
-`LIBPNG16.LIB`, `LIBWEBPMUX.LIB`, `LIBWEBP.LIB` and
-`LIBSHARPYUV.LIB` (with some repeated inputs). Thus liblzma is not
-merely installed: TIFF's default LZMA feature brought it into the link.
-The two vcpkg CMake helper packages are build-time tools, not runtime
-libraries. The source-built package notices include every named static
-dependency.
+On one Windows 11 x64 device, the standalone engine converted a synthetic image to a searchable PDF containing `FORGE OCR SAMPLE`. An isolated copy of the existing packaged Forge PDF preview, with only its OCR executable replaced, opened an image-only synthetic PDF and saved an OCR image copy. Independent pypdf readback found no source text and extracted `FORGE OCR SAMPLE` from the output; the original file hash stayed unchanged. This validates that packaged image-copy OCR path, not source-preserving OCR, forms, highlights, other Windows versions or accessibility. The existing private preview ZIP remains intact.
 
-Release C and C++ projects used the MSVC `MultiThreaded` runtime setting
-(`/MT`) from toolset 14.44.35207, and the executable has no imported
-VC runtime DLL. Static linking still includes Microsoft runtime code;
-redistribution is subject to the installed Visual Studio license terms.
-Microsoft's [CRT library documentation](https://learn.microsoft.com/en-us/cpp/c-runtime-library/crt-library-features?view=msvc-170)
-describes the static libraries and Windows UCRT relationship. This
-audit records the toolset and leaves the applicable license determination
-as an independent release gate; it does not infer permission solely from
-the DLL import list.
+The prior MSVC static-runtime executable, SHA-256 `2df0d8207b34b59dd95f93c0e5cda5eae8d626519d4dc7206a899cc23a82c5b8`, is a historical private candidate. Its Build Tools redistribution evidence gap motivated this alternative. The older installer-derived 55-DLL preview is also superseded and private.
 
+## Remaining release gates
 
-## Historical private preview acceptance
-
-The earlier source-build review ZIP was 41,576,256 bytes, SHA-256
-`e9339c98f1c250fa2ffd6367855bfdcb579791f35bdecef362a55bf4b32fe61a`.
-It includes this audit, `THIRD_PARTY_NOTICES.md`, the Tesseract and
-tessdata_fast licenses, and nine static dependency copyright files.
-The extracted bundle contains no OCR DLLs. The extracted engine's SHA-256
-matches the source-built executable above, and five synthetic OCR tests
-passed against this exact ZIP.
-
-On Windows 11 25H2 build 26200 x64, the exact extracted portable app
-opened a synthetic image-only PDF, displayed the OCR loss warning and
-progress, and saved a one-page searchable copy. Independent pypdf text
-extraction returned `FORGE OCR SAMPLE`. The source PDF SHA-256 remained
-`142a1f056fde6e0cebd0a06f1cc56756bb058ec0bfa0f06084988758a191da4ca`,
-matching the pre-test review fixture. Code inspection found no HTTP/socket
-upload call in the Forge PDF source; OCR invokes the bundled local executable.
-No packet-level network capture was performed. The CI app tests ran on
-Windows Server 2025 with Python 3.11 and 3.14, but did not execute this
-bundled OCR binary. Other Windows versions and architectures are untested.
+Build a fresh pinned portable ZIP from the current PR source with this exact engine and notice set. Run packaging negative tests and packaged OCR, form and highlight acceptance on synthetic files; verify source preservation where claimed. Inspect final license coverage against the link map, test supported Windows versions, then verify remote CI and exact archive hashes. The builder intentionally rejects `--ocr-bundle` for normal release builds until these gates and explicit release approval are complete. No merge or public release is authorized by this audit.
