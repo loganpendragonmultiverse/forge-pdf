@@ -56,3 +56,11 @@ The OCR engine tests require FORGE_PDF_TEST_OCR_DIR to point at a complete
 app-scoped bundle; CI without it skips engine integration tests. Tk dialog tests
 run in Windows CI. Independent viewer, other DPI, rotated/cropped, and screen
 reader acceptance remain open. Do not present this as tagged PDF accessibility.
+
+## Forms review stage
+
+Synthetic AcroForm tests exercise custom checkbox on-state names and ordinary
+radio groups, including widget appearance changes, serialized values, reopen
+and Undo. The Tk dialog and field picker are tested with a synthetic radio
+group. Independent-viewer appearance validation, complex choice fields and XFA
+remain open.

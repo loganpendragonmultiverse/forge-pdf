@@ -341,6 +341,7 @@ class Editor(tk.Tk):
         menu.add_command(label="Fill text form field…", command=self.fill_text_field_dialog)
         menu.add_command(label="Edit form fields…", command=self.edit_form_fields_dialog)
         menu.add_command(label="Fill choice form field…", command=self.fill_choice_field_dialog)
+        menu.add_command(label="Select radio option…", command=self.select_radio_dialog)
         menu.add_command(label="Toggle checkbox field…", command=self.toggle_checkbox_dialog)
         menu.add_command(label="Edit document metadata…", command=self.metadata_dialog)
         menu.add_command(label="Add bookmark for this page…", command=self.bookmark_dialog)
@@ -563,6 +564,8 @@ class Editor(tk.Tk):
             fields[name] = ("Choice", value, options)
         for name, checked in self.doc.checkbox_fields().items():
             fields[name] = ("Checkbox", checked, [])
+        for name, (value, options) in self.doc.radio_fields().items():
+            fields[name] = ("Radio", value, options)
         if not fields:
             messagebox.showinfo(
                 "Forge PDF", "No supported editable form fields found.", parent=self
@@ -604,7 +607,7 @@ class Editor(tk.Tk):
                 text_value.delete(0, "end")
                 text_value.insert(0, value)
                 text_value.pack(fill="x", padx=12)
-            elif kind == "Choice":
+            elif kind in ("Choice", "Radio"):
                 choice_value.configure(values=options)
                 choice_value.set(value)
                 choice_value.pack(fill="x", padx=12)
@@ -621,10 +624,13 @@ class Editor(tk.Tk):
             if kind == "Text":
                 value = text_value.get()
                 self.change(lambda: self.doc.fill_text_field(name, value))
-            elif kind == "Choice":
+            elif kind in ("Choice", "Radio"):
                 value = choice_value.get()
                 if value in options:
-                    self.change(lambda: self.doc.fill_choice_field(name, value))
+                    if kind == "Radio":
+                        self.change(lambda: self.doc.select_radio(name, value))
+                    else:
+                        self.change(lambda: self.doc.fill_choice_field(name, value))
             else:
                 value = check_value.get()
                 self.change(lambda: self.doc.set_checkbox(name, value))
@@ -676,6 +682,35 @@ class Editor(tk.Tk):
         except Exception as exc:
             self.error(exc)
 
+    def select_radio_dialog(self):
+        if not self.doc:
+            return
+        try:
+            fields = self.doc.radio_fields()
+            if not fields:
+                messagebox.showinfo("Forge PDF", "No editable radio groups found.", parent=self)
+                return
+            name = simpledialog.askstring(
+                "Radio groups",
+                "Field name (choose from: " + ", ".join(fields) + "):",
+                parent=self,
+            )
+            if name is None:
+                return
+            if name not in fields:
+                raise ValueError("Choose an editable radio group from the list.")
+            current, options = fields[name]
+            value = simpledialog.askstring(
+                "Radio option",
+                f"{name}: choose from {', '.join(options)}",
+                initialvalue=current,
+                parent=self,
+            )
+            if value is not None:
+                self.change(lambda: self.doc.select_radio(name, value))
+        except Exception as exc:
+            self.error(exc)
+
     def toggle_checkbox_dialog(self):
         if not self.doc:
             return
@@ -683,7 +718,7 @@ class Editor(tk.Tk):
             fields = self.doc.checkbox_fields()
             if not fields:
                 messagebox.showinfo(
-                    "Forge PDF", "No editable Yes/Off checkboxes found.", parent=self
+                    "Forge PDF", "No editable single-state checkboxes found.", parent=self
                 )
                 return
             name = simpledialog.askstring(
@@ -693,7 +728,7 @@ class Editor(tk.Tk):
             )
             if name is not None:
                 if name not in fields:
-                    raise ValueError("Choose an editable Yes/Off checkbox from the list.")
+                    raise ValueError("Choose an editable single-state checkbox from the list.")
                 self.change(lambda: self.doc.set_checkbox(name, not fields[name]))
         except Exception as exc:
             self.error(exc)

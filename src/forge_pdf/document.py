@@ -779,22 +779,54 @@ class Document:
         result = {}
         for name, field in (read_pdf(self.data).get_fields() or {}).items():
             states = field.get("/_States_", [])
+            if not isinstance(states, (list, ArrayObject)):
+                continue
+            on_states = [state for state in states if state != "/Off"]
             if (
                 field.get("/FT") == "/Btn"
                 and not field.get("/Ff", 0) & (1 | (1 << 15) | (1 << 16))
-                and "/Yes" in states
                 and "/Off" in states
+                and len(on_states) == 1
+                and isinstance(on_states[0], str)
             ):
-                result[name] = field.get("/V") == "/Yes"
+                result[name] = field.get("/V") == on_states[0]
         return result
 
     def set_checkbox(self, name: str, checked: bool) -> None:
         if name not in self.checkbox_fields() or type(checked) is not bool:
-            raise ValueError("Choose an editable Yes/Off checkbox.")
+            raise ValueError("Choose an editable single-state checkbox.")
+        states = (read_pdf(self.data).get_fields() or {})[name]["/_States_"]
+        on_state = next(state for state in states if state != "/Off")
         writer = self.writer()
         writer.update_page_form_field_values(
-            None, {name: "/Yes" if checked else "/Off"}, auto_regenerate=False
+            None, {name: on_state if checked else "/Off"}, auto_regenerate=False
         )
+        self.commit(writer)
+
+    def radio_fields(self) -> dict[str, tuple[str, list[str]]]:
+        """Expose conventional editable radio groups and their on-state names."""
+        result = {}
+        for name, field in (read_pdf(self.data).get_fields() or {}).items():
+            states = field.get("/_States_", [])
+            if not isinstance(states, (list, ArrayObject)):
+                continue
+            options = list(dict.fromkeys(str(state) for state in states if state != "/Off"))
+            if (
+                field.get("/FT") == "/Btn"
+                and field.get("/Ff", 0) & (1 << 15)
+                and not field.get("/Ff", 0) & (1 | (1 << 16))
+                and 2 <= len(options) <= 100
+                and all(option.startswith("/") and len(option) <= 128 for option in options)
+            ):
+                result[name] = (str(field.get("/V", "")), options)
+        return result
+
+    def select_radio(self, name: str, value: str) -> None:
+        fields = self.radio_fields()
+        if name not in fields or value not in fields[name][1]:
+            raise ValueError("Choose a listed option for an editable radio group.")
+        writer = self.writer()
+        writer.update_page_form_field_values(None, {name: value}, auto_regenerate=False)
         self.commit(writer)
 
     def metadata(self) -> dict[str, str]:

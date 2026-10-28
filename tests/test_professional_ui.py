@@ -8,7 +8,31 @@ from pypdf import PdfReader
 from forge_pdf.app import Editor
 from forge_pdf.document import Document
 
-from test_professional_workflows import controls_pdf
+from test_professional_workflows import controls_pdf, radio_pdf
+
+
+def test_radio_dialog_and_field_picker(tmp_path, monkeypatch):
+    app = Editor()
+    try:
+        app.doc = Document(radio_pdf())
+        app.path = tmp_path / "radio.pdf"
+        values = iter(("delivery", "/Print"))
+        monkeypatch.setattr("forge_pdf.app.simpledialog.askstring", lambda *a, **kw: next(values))
+        app.select_radio_dialog()
+        assert app.doc.radio_fields()["delivery"][0] == "/Print"
+        app.edit_form_fields_dialog()
+        dialog = next(w for w in app.winfo_children() if isinstance(w, tk.Toplevel))
+        listing = next(w for w in dialog.winfo_children() if isinstance(w, tk.Listbox))
+        assert "Radio" in listing.get(0)
+        from tkinter import ttk
+
+        choice = next(w for w in dialog.winfo_children() if isinstance(w, ttk.Combobox))
+        choice.set("/Email")
+        controls = next(w for w in dialog.winfo_children() if isinstance(w, ttk.Frame))
+        next(w for w in controls.winfo_children() if w.cget("text") == "Apply value").invoke()
+        assert app.doc.radio_fields()["delivery"][0] == "/Email"
+    finally:
+        app.destroy()
 
 
 def test_choice_checkbox_and_bookmark_navigation(tmp_path, monkeypatch):

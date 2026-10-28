@@ -5,7 +5,7 @@ import io
 import pytest
 from pypdf import PdfReader
 from pypdf import PdfWriter
-from pypdf.generic import RectangleObject
+from pypdf.generic import NameObject, RectangleObject
 from reportlab.pdfgen.canvas import Canvas
 
 from forge_pdf.document import Document
@@ -34,6 +34,16 @@ def controls_pdf():
         width=120,
         height=20,
     )
+    canvas.showPage()
+    canvas.save()
+    return stream.getvalue()
+
+
+def radio_pdf():
+    stream = io.BytesIO()
+    canvas = Canvas(stream, pagesize=(400, 500))
+    canvas.acroForm.radio(name="delivery", value="Email", selected=True, x=40, y=380)
+    canvas.acroForm.radio(name="delivery", value="Print", selected=False, x=90, y=380)
     canvas.showPage()
     canvas.save()
     return stream.getvalue()
@@ -89,6 +99,70 @@ def test_choice_and_checkbox_are_undoable():
         doc.fill_choice_field("tier", "Diamond")
     doc.undo()
     assert doc.checkbox_fields() == {"agree": False}
+
+
+def test_custom_checkbox_state_updates_appearance_and_undo():
+    writer = PdfWriter(clone_from=io.BytesIO(controls_pdf()))
+    checkbox = writer.pages[0]["/Annots"][0].get_object()
+    appearances = checkbox["/AP"].get_object()["/N"].get_object()
+    appearances[NameObject("/Agreed")] = appearances.pop(NameObject("/Yes"))
+    stream = io.BytesIO()
+    writer.write(stream)
+    doc = Document(stream.getvalue())
+    original = doc.data
+    assert doc.checkbox_fields() == {"agree": False}
+    before = doc.render(0, 1)
+    doc.set_checkbox("agree", True)
+    after = doc.render(0, 1)
+    try:
+        assert before.tobytes() != after.tobytes()
+    finally:
+        before.close()
+        after.close()
+    reopened = PdfReader(io.BytesIO(doc.data))
+    assert reopened.get_fields()["agree"]["/V"] == "/Agreed"
+    assert reopened.pages[0]["/Annots"][0].get_object()["/AS"] == "/Agreed"
+    assert doc.checkbox_fields() == {"agree": True}
+    doc.undo()
+    assert doc.data == original
+    doc.set_checkbox("agree", True)
+    doc.set_checkbox("agree", False)
+    assert doc.checkbox_fields() == {"agree": False}
+
+
+def test_ambiguous_checkbox_appearance_is_not_offered():
+    writer = PdfWriter(clone_from=io.BytesIO(controls_pdf()))
+    checkbox = writer.pages[0]["/Annots"][0].get_object()
+    appearances = checkbox["/AP"].get_object()["/N"].get_object()
+    appearances[NameObject("/Maybe")] = appearances["/Yes"]
+    stream = io.BytesIO()
+    writer.write(stream)
+    doc = Document(stream.getvalue())
+    assert doc.checkbox_fields() == {}
+    with pytest.raises(ValueError, match="single-state"):
+        doc.set_checkbox("agree", True)
+
+
+def test_radio_group_updates_all_widgets_and_undo():
+    doc = Document(radio_pdf())
+    original = doc.data
+    assert doc.radio_fields() == {"delivery": ("/Email", ["/Email", "/Print"])}
+    before = doc.render(0, 1)
+    doc.select_radio("delivery", "/Print")
+    after = doc.render(0, 1)
+    try:
+        assert before.tobytes() != after.tobytes()
+    finally:
+        before.close()
+        after.close()
+    reader = PdfReader(io.BytesIO(doc.data))
+    assert reader.get_fields()["delivery"]["/V"] == "/Print"
+    assert [ref.get_object()["/AS"] for ref in reader.pages[0]["/Annots"]] == ["/Off", "/Print"]
+    assert doc.radio_fields()["delivery"][0] == "/Print"
+    with pytest.raises(ValueError, match="listed option"):
+        doc.select_radio("delivery", "/Missing")
+    doc.undo()
+    assert doc.data == original
 
 
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])

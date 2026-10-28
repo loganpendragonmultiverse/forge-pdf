@@ -34,7 +34,7 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 - Use two toolbar rows, a hideable pages panel and wrapped hints in smaller desktop windows.
 - Review an export summary of pages, links, form fields and annotations before sharing.
 - Fill existing editable text form fields, edit title/author/subject/keywords, and add a bookmark for the current page.
-- Fill simple choice fields and Yes/Off checkboxes; browse bookmarks; add and delete native
+- Fill simple choice fields, single-state checkboxes and ordinary radio groups; browse bookmarks; add and delete native
   text notes. Edit existing text notes and browse notes across the document. Rotate selected
   page ranges as one Undoable edit.
 - Use **Edit form fields** to choose supported fields from a list and edit them with
@@ -135,8 +135,8 @@ install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build c
 
 - Adds content over existing pages; does not rewrite existing paragraphs,
   preserve vector/text content during redacted export, validate signatures, or support every AcroForm control. Form filling
-  requires existing editable fields; complex choice options, radio groups, custom checkbox
-  states, field creation, and XFA forms are unsupported.
+  requires existing editable fields; complex choice options, push buttons,
+  field creation, and XFA forms are unsupported.
 - Whiteout retains underlying PDF content. It is inappropriate for hiding confidential data.
 - Rasterized redacted export supports up to 20 pages and bounded page dimensions. It
   removes PDF objects from the new copy, but loses all searchable text, form behavior,

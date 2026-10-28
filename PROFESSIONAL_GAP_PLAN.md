@@ -13,9 +13,9 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 
 ## Implemented in draft PR #16
 
-1. Fill existing editable AcroForm text, simple choice and Yes/Off checkbox fields, with
-   a field picker. XFA, radio groups, custom checkbox states and signature fields remain
-   unsupported.
+1. Fill existing editable AcroForm text, simple choice, single-state checkbox and
+   ordinary radio-group fields, with a field picker. XFA, complex choices, push
+   buttons and signature fields remain unsupported.
 2. Edit common document metadata; add and browse bookmarks; add, edit, delete and browse
    native text notes; add and delete native highlight annotations; rotate page ranges;
    and add page labels when no custom labels exist.
@@ -35,7 +35,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | P0 | True redaction | Stage 3 provides a bounded rasterized export: every source page is rebuilt from pixels, the selected rectangle is blacked out, and source objects are absent from the new PDF. This loses text/vector fidelity and does not erase the open source document or old sessions. Next: precise object-preserving redaction, independent viewer/forensic validation and sensitive-copy lifecycle. Never label visual whiteout secure. |
 | P0 | Crash recovery | Opt-in history-free snapshots and atomic writes are implemented. The current stage marks recovery files, rejects ordinary sessions as recovery destinations, stops updates if a snapshot is replaced, and allows explicit deletion of a selected marked snapshot. Next: corruption/restart UI acceptance and optional user-directed retention policy. No automatic cleanup. |
 | P1 | OCR | Bounded offline searchable image-copy export, separate worker, per-page progress, cancellation and selection among installed language files are implemented. The source-built private preview passed synthetic OCR and a visible Windows export. A separate bounded text-layer copy now preserves original page objects for simple unrotated, uncropped image-only pages, with synthetic visual/text/navigation tests. Next: mixed and rotated pages, independent-viewer acceptance, and redistribution/compatibility gates. No document upload. |
-| P1 | Full forms | Existing text, simple choice and Yes/Off checkbox fields are supported with a field picker in stages 3–4. Next: complex choice options, custom button states, radio groups and appearance validation in independent viewers. XFA needs a separate decision. |
+| P1 | Full forms | Existing text and simple choice fields, single-state checkboxes with custom on-state names, and ordinary radio groups are supported with a field picker. Synthetic tests verify widget appearances, reopen and Undo. Next: complex choice options, push buttons and independent-viewer appearance validation. XFA needs a separate decision. |
 | P1 | Annotation editing | Text notes can be edited and browsed across pages; native highlight annotations can be added and deleted. Later page-content edits may flatten them. Next: editable highlight geometry/colors and drawings with preservation through other edits. |
 | P1 | Bookmark navigation | Stage 3 adds browsing and page navigation. Next: rename, reorder and delete outline items; preserve destinations during page edits. |
 | P2 | Search | Stage 4 adds case/whole-word options and a browsable result list. Next: position-highlighted glyphs, optional OCR index and measured bounded search over larger files. |
@@ -78,10 +78,11 @@ deliberately.
    bookmarks and metadata. Next: mixed text, rotations, crop boxes, deskew and
    reading-order validation in independent viewers. Keep the rasterized path for
    unsupported inputs. No cloud OCR.
-2. **Richer forms:** extend AcroForm handling with radio groups, custom button
-   states, multi-select choice options and appearance streams. Validate values
-   and rendering in independent PDF viewers. XFA is a separate architecture
-   decision because pypdf does not provide a complete XFA editing engine.
+2. **Richer forms:** ordinary radio groups and single-state checkboxes with
+   custom on-state names are now supported. Next: multi-select and export/display
+   choice options, more complex button appearances and validation in independent
+   PDF viewers. XFA is a separate architecture decision because pypdf does not
+   provide a complete XFA editing engine.
 3. **Accessible output:** define a semantic document model, reading order,
    language and alt-text editor before writing tags. Test against a PDF/UA
    validator and screen readers; do not equate a searchable OCR layer with
