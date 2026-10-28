@@ -55,7 +55,10 @@ def test_private_ocr_bundle_rejects_extra_dll_and_changed_engine(tmp_path, monke
     monkeypatch.setattr(
         build_windows,
         "OCR_NOTICE_SHA256",
-        {name: hashlib.sha256(name.encode()).hexdigest() for name in build_windows.OCR_NOTICE_SHA256},
+        {
+            name: hashlib.sha256(name.encode()).hexdigest()
+            for name in build_windows.OCR_NOTICE_SHA256
+        },
     )
     for name, content, constant in (
         ("tesseract.exe", b"engine", "OCR_ENGINE_SHA256"),
