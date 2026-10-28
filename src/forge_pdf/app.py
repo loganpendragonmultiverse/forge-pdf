@@ -925,6 +925,25 @@ class Editor(tk.Tk):
             pady=(0, 12)
         )
 
+        def recolor_selected():
+            if not listing.curselection():
+                return
+            index = listing.curselection()[0]
+            color = simpledialog.askstring(
+                "Highlight color", "Color (yellow, green, blue or pink):", parent=dialog
+            )
+            if color is None:
+                return
+            self.change(
+                lambda: self.doc.recolor_native_highlight(self.page, index, color.strip().lower())
+            )
+            populate()
+            listing.selection_set(index)
+
+        ttk.Button(dialog, text="Recolor selected highlight", command=recolor_selected).pack(
+            pady=(0, 12)
+        )
+
     def rotate_ranges(self):
         if not self.doc:
             return

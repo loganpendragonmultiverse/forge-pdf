@@ -175,3 +175,27 @@ def test_review_and_delete_native_highlight(tmp_path):
         assert app.doc.highlight_annotation_count(0) == 0
     finally:
         app.destroy()
+
+
+def test_review_and_recolor_native_highlight(tmp_path, monkeypatch):
+    app = Editor()
+    try:
+        app.doc = Document(controls_pdf())
+        app.path = tmp_path / "recolor.pdf"
+        app.doc.add_native_highlight(0, (20, 20, 100, 60))
+        app.refresh()
+        app.review_native_highlights()
+        dialog = next(w for w in app.winfo_children() if isinstance(w, tk.Toplevel))
+        listing = next(w for w in dialog.winfo_children() if isinstance(w, tk.Listbox))
+        listing.selection_set(0)
+        monkeypatch.setattr("forge_pdf.app.simpledialog.askstring", lambda *a, **kw: "blue")
+        recolor = next(
+            w
+            for w in dialog.winfo_children()
+            if w.winfo_class() == "TButton" and "Recolor" in w.cget("text")
+        )
+        recolor.invoke()
+        assert app.doc.highlight_annotation_count(0) == 1
+        assert app.doc.data != app.doc.undo_stack[-1]
+    finally:
+        app.destroy()

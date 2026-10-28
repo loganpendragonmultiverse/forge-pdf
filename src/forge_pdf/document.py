@@ -1044,6 +1044,35 @@ class Document:
             for ref in read_pdf(self.data).pages[index].get("/Annots", [])
         )
 
+    def recolor_native_highlight(self, index: int, highlight_index: int, color: str) -> None:
+        """Recolor an annotation whose appearance is derived from its PDF color entry."""
+        colors = {
+            "yellow": "fff176",
+            "green": "a5d6a7",
+            "blue": "90caf9",
+            "pink": "f48fb1",
+        }
+        if type(index) is not int or not 0 <= index < self.count:
+            raise ValueError("Choose a page in this document.")
+        if color not in colors:
+            raise ValueError("Choose yellow, green, blue or pink.")
+        writer = self.writer()
+        highlights = [
+            ref.get_object()
+            for ref in writer.pages[index].get("/Annots", [])
+            if ref.get_object().get("/Subtype") == "/Highlight"
+        ]
+        if type(highlight_index) is not int or not 0 <= highlight_index < len(highlights):
+            raise ValueError("Choose a native highlight on this page.")
+        annotation = highlights[highlight_index]
+        if "/AP" in annotation:
+            raise ValueError(
+                "This highlight has a custom appearance that cannot be recolored safely."
+            )
+        rgb = bytes.fromhex(colors[color])
+        annotation[NameObject("/C")] = ArrayObject([FloatObject(channel / 255) for channel in rgb])
+        self.commit(writer)
+
     def delete_native_highlight(self, index: int, highlight_index: int) -> None:
         if type(index) is not int or not 0 <= index < self.count:
             raise ValueError("Choose a page in this document.")

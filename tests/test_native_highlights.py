@@ -4,7 +4,7 @@ import io
 
 import pytest
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import RectangleObject
+from pypdf.generic import DictionaryObject, NameObject, RectangleObject
 
 from forge_pdf.document import Document
 
@@ -50,3 +50,52 @@ def test_native_highlight_rejects_invalid_rectangles_and_indices():
         doc.add_native_highlight(0, (0, 0, float("nan"), 30))
     with pytest.raises(ValueError, match="Choose a native highlight"):
         doc.delete_native_highlight(0, 0)
+
+
+def test_recolor_native_highlight_preserves_annotation_and_undo(tmp_path):
+    doc = Document(form_pdf())
+    doc.add_native_highlight(0, (40, 40, 110, 90))
+    original = doc.data
+    before = doc.render(0, 1)
+    doc.recolor_native_highlight(0, 0, "blue")
+    after = doc.render(0, 1)
+    try:
+        assert before.tobytes() != after.tobytes()
+    finally:
+        before.close()
+        after.close()
+    target = tmp_path / "recolored.pdf"
+    doc.save_copy(target)
+    reopened = PdfReader(target)
+    highlight = next(
+        ref.get_object()
+        for ref in reopened.pages[0]["/Annots"]
+        if ref.get_object().get("/Subtype") == "/Highlight"
+    )
+    assert [round(float(value), 3) for value in highlight["/C"]] == [0.565, 0.792, 0.976]
+    assert "customer" in (reopened.get_fields() or {})
+    doc.undo()
+    assert doc.data == original
+    with pytest.raises(ValueError, match="green, blue or pink"):
+        doc.recolor_native_highlight(0, 0, "orange")
+    with pytest.raises(ValueError, match="Choose a native highlight"):
+        doc.recolor_native_highlight(0, 4, "green")
+
+
+def test_recolor_rejects_custom_appearance_without_changing_document():
+    doc = Document(form_pdf())
+    doc.add_native_highlight(0, (40, 40, 110, 90))
+    writer = PdfWriter(clone_from=io.BytesIO(doc.data))
+    highlight = next(
+        ref.get_object()
+        for ref in writer.pages[0]["/Annots"]
+        if ref.get_object().get("/Subtype") == "/Highlight"
+    )
+    highlight[NameObject("/AP")] = DictionaryObject()
+    stream = io.BytesIO()
+    writer.write(stream)
+    custom = Document(stream.getvalue())
+    original = custom.data
+    with pytest.raises(ValueError, match="custom appearance"):
+        custom.recolor_native_highlight(0, 0, "pink")
+    assert custom.data == original
