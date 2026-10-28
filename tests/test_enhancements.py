@@ -52,6 +52,20 @@ def test_search_is_literal_bounded_and_read_only(tmp_path):
         document.search("search", limit=True)
 
 
+def test_search_case_word_boundaries_and_offsets():
+    stream = io.BytesIO()
+    canvas = Canvas(stream, pagesize=(300, 200))
+    canvas.drawString(30, 150, "Alpha alphabet alpha")
+    canvas.save()
+    document = Document(stream.getvalue())
+    assert len(document.search("alpha")) == 3
+    assert len(document.search("alpha", whole_word=True)) == 2
+    match = document.search("Alpha", case_sensitive=True, whole_word=True)
+    assert len(match) == 1 and match[0]["start"] == 0 and match[0]["end"] == 5
+    with pytest.raises(ValueError, match="options"):
+        document.search("Alpha", case_sensitive=1)
+
+
 def test_inserted_local_font_glyphs_survive_export_and_undo(tmp_path):
     document, source = sample(tmp_path)
     before = document.data

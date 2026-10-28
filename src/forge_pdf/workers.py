@@ -11,7 +11,7 @@ from PIL import Image
 from .document import Document, MAX_BYTES
 
 
-def _work(connection, memory_name, length, role, params):
+def _work(connection, memory_name, length, role, params, cancel_event):
     try:
         memory = shared_memory.SharedMemory(name=memory_name)
         try:
@@ -39,9 +39,38 @@ def _work(connection, memory_name, length, role, params):
         elif role == "search":
             connection.send_bytes(
                 json.dumps(
-                    {"status": "search", "matches": document.search(params["query"])}
+                    {
+                        "status": "search",
+                        "matches": document.search(
+                            params["query"],
+                            case_sensitive=params.get("case_sensitive", False),
+                            whole_word=params.get("whole_word", False),
+                        ),
+                    }
                 ).encode()
             )
+        elif role == "ocr":
+            from pathlib import Path
+
+            def progress(done, total):
+                connection.send_bytes(
+                    json.dumps({"status": "progress", "done": done, "total": total}).encode()
+                )
+
+            export = (
+                document.export_searchable_layer_copy
+                if params.get("preserve_pages")
+                else document.export_searchable_image_copy
+            )
+            export(
+                Path(params["path"]),
+                overwrite=params["overwrite"],
+                ocr_dir=Path(params["ocr_dir"]) if params.get("ocr_dir") else None,
+                language=params["language"],
+                progress=progress,
+                cancelled=cancel_event.is_set,
+            )
+            connection.send_bytes(json.dumps({"status": "ocr"}).encode())
         else:
             raise ValueError("Unknown worker operation.")
     except Exception as exc:
@@ -57,14 +86,17 @@ class WorkerFuture:
         self.memory = shared_memory.SharedMemory(create=True, size=len(data))
         self.memory.buf[: len(data)] = data
         context = mp.get_context("spawn")
+        self.role = role
+        self.cancel_event = context.Event()
         self.connection, child = context.Pipe(duplex=False)
         self.process = context.Process(
-            target=_work, args=(child, self.memory.name, len(data), role, params)
+            target=_work, args=(child, self.memory.name, len(data), role, params, self.cancel_event)
         )
         self.header = None
         self.value = None
         self.error = None
         self.complete = False
+        self.progress = (0, 0)
         try:
             self.process.start()
         except BaseException:
@@ -94,6 +126,12 @@ class WorkerFuture:
                     self.error = ValueError(self.header["message"])
                 elif self.header["status"] == "search":
                     self.value = self.header["matches"]
+                elif self.header["status"] == "progress":
+                    self.progress = (self.header["done"], self.header["total"])
+                    self.header = None
+                    return False
+                elif self.header["status"] == "ocr":
+                    self.value = True
                 elif self.header["status"] == "image":
                     if not self.connection.poll():
                         return False
@@ -137,6 +175,9 @@ class WorkerFuture:
         return self.value
 
     def cancel(self):
+        if self.role == "ocr":
+            self.cancel_event.set()
+            self.process.join(timeout=2)
         if self.process.is_alive():
             self.process.terminate()
             self.process.join(timeout=2)

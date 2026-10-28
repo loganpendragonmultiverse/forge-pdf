@@ -47,3 +47,45 @@ synthetic pages and inspect retained links/forms/annotation appearances. A succe
 preflight or test fixture is not a guarantee for arbitrary documents, fonts or accessibility tools.
 Screen-reader, physical small-device, large-file responsiveness and hostile-PDF isolation remain
 unverified. Do not advertise whiteout, subset export or image stamps as security redaction.
+
+## Source-preserving OCR review stage
+
+Synthetic source scans verify extracted text, unchanged 100% rendering, retained
+links, bookmarks and metadata, and refusal of rotated/cropped/text/form inputs.
+The OCR engine tests require FORGE_PDF_TEST_OCR_DIR to point at a complete
+app-scoped bundle; CI without it skips engine integration tests. Tk dialog tests
+run in Windows CI. Independent viewer, other DPI, rotated/cropped, and screen
+reader acceptance remain open. Do not present this as tagged PDF accessibility.
+
+## Forms review stage
+
+Synthetic AcroForm tests exercise custom checkbox on-state names and ordinary
+radio groups, including widget appearance changes, serialized values, reopen
+and Undo. The Tk dialog and field picker are tested with a synthetic radio
+group. Independent-viewer appearance validation, complex choice fields and XFA
+remain open.
+
+## Bookmark editing review stage
+
+Synthetic two-page outlines verify top-level rename/removal, destination preservation
+and Undo. Nested outlines are refused without changing the source. Windows Tk
+tests exercise the Browse bookmarks Rename and Remove controls. Reordering and
+nested-outline editing remain open.
+
+## Page-count performance review stage
+
+A synthetic 500-page blank PDF (62,115 bytes) measured 100 repeated count
+reads at about 1.7 seconds before caching and 0.000009 seconds afterward
+on one Windows 11 x64 machine. Tests verify count after delete, append, Undo
+and Redo. This measurement does not establish overall large-file responsiveness
+or justify raising the 50 MB/500-page limits.
+
+
+## 1.3.0 release checks
+
+The Windows tag workflow builds from the annotated release tag, expands the pinned
+app-scoped OCR bundle, runs the suite and the portable launch/save/session check,
+and uploads release assets and checksums. Release acceptance on one Windows 11 x64
+device also covered synthetic form controls and the packaged OCR engine. Other
+Windows versions, independent viewer appearance, screen reader output and hostile
+PDF isolation have not been accepted.

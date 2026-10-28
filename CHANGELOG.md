@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 - 2026-10-28
+
+- Add offline English OCR image-copy and limited source-preserving text-layer exports with progress and cancellation. The Windows ZIP includes a pinned, source-built Tesseract engine and notices.
+- Fill supported text, choice, checkbox and radio forms; edit common metadata and simple top-level bookmarks.
+- Add native text notes and highlights, including review, editing, recoloring and removal where supported.
+- Add page-range rotation, page labels, richer literal search and AES-256 encrypted-copy export.
+- Add opt-in history-free recovery snapshots and atomic output writes.
+- Add bounded rasterized redacted export that rebuilds pages from pixels; the output loses source text, links, forms and accessibility structure.
+- Preserve original files and document limits; retain explicit exclusions for signature validation, XFA, tagged output and object-preserving redaction.
+
 ## 1.2.0 — 2026-10-23
 
 - Add literal document search with next/previous navigation, including keyboard shortcuts.

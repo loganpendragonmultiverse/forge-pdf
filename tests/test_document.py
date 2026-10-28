@@ -38,10 +38,14 @@ def test_reorder_delete_merge_and_restore(tmp_path):
     doc.append(extra)
     assert doc.count == 3
     doc.undo()
+    assert doc.count == 2
     doc.undo()
+    assert doc.count == 3
     doc.undo()
+    assert doc.count == 3
     assert doc.data == original
     doc.redo()
+    assert doc.count == 3
     assert "1" in texts(doc)[2]
 
 
