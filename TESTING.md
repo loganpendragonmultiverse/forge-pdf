@@ -71,3 +71,11 @@ Synthetic two-page outlines verify top-level rename/removal, destination preserv
 and Undo. Nested outlines are refused without changing the source. Windows Tk
 tests exercise the Browse bookmarks Rename and Remove controls. Reordering and
 nested-outline editing remain open.
+
+## Page-count performance review stage
+
+A synthetic 500-page blank PDF (62,115 bytes) measured 100 repeated count
+reads at about 1.7 seconds before caching and 0.000009 seconds afterward
+on one Windows 11 x64 machine. Tests verify count after delete, append, Undo
+and Redo. This measurement does not establish overall large-file responsiveness
+or justify raising the 50 MB/500-page limits.

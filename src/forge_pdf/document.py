@@ -68,8 +68,9 @@ def parse_page_ranges(selection: str, page_count: int) -> list[int]:
 
 class Document:
     def __init__(self, data: bytes, source: Path | None = None):
-        read_pdf(data)
+        reader = read_pdf(data)
         self.data = data
+        self._page_count = len(reader.pages)
         self.saved = data
         self.opened_encrypted = False
         self.sources = {source.resolve()} if source else set()
@@ -97,7 +98,7 @@ class Document:
 
     @property
     def count(self) -> int:
-        return len(PdfReader(io.BytesIO(self.data)).pages)
+        return self._page_count
 
     @property
     def dirty(self) -> bool:
@@ -108,22 +109,25 @@ class Document:
 
     def commit(self, writer: PdfWriter) -> None:
         candidate = serialize(writer)
-        read_pdf(candidate)
+        reader = read_pdf(candidate)
         self.undo_stack.append(self.data)
         while len(self.undo_stack) > 30 or sum(map(len, self.undo_stack)) > HISTORY_BYTES:
             self.undo_stack.pop(0)
         self.redo_stack.clear()
         self.data = candidate
+        self._page_count = len(reader.pages)
 
     def undo(self) -> None:
         if self.undo_stack:
             self.redo_stack.append(self.data)
             self.data = self.undo_stack.pop()
+            self._page_count = len(read_pdf(self.data).pages)
 
     def redo(self) -> None:
         if self.redo_stack:
             self.undo_stack.append(self.data)
             self.data = self.redo_stack.pop()
+            self._page_count = len(read_pdf(self.data).pages)
 
     def rotate(self, index: int, degrees: int = 90) -> None:
         writer = self.writer()

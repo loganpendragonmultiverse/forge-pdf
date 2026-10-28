@@ -41,7 +41,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | P2 | Search | Stage 4 adds case/whole-word options and a browsable result list. Next: position-highlighted glyphs, optional OCR index and measured bounded search over larger files. |
 | P2 | Page tools | Stage 3 adds batch rotate; stage 4 adds a bounded page-label range for documents without existing custom labels. Next: split, editing existing label structures, headers/watermarks and stronger link/bookmark preservation after organization. |
 | P2 | Export and accessibility | Image/text export, PDF/A or tagged PDF only with independent conformance validation, structure checks, alt text and reading-order support. |
-| P2 | Performance | Async transactional edits with cancellation, memory budgets and measured large-file behavior before changing the 50 MB/500 page limits. |
+| P2 | Performance | Validated page count is now cached and updated after edits and Undo/Redo. A synthetic 500-page, 62 KB file showed 100 count reads falling from about 1.7 seconds to about 0.000009 seconds on one Windows 11 x64 machine. Next: async transactional edits, memory budgets and broader large-file measurements before changing the 50 MB/500 page limits. |
 
 Digital signature validation needs a separate trust-store and revocation design. A visual
 image stamp is not a digital signature. No change here claims signature validation.
