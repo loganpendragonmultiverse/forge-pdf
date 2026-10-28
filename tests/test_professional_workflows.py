@@ -165,6 +165,45 @@ def test_radio_group_updates_all_widgets_and_undo():
     assert doc.data == original
 
 
+def test_rename_remove_bookmarks_preserves_destinations_and_undo():
+    writer = PdfWriter()
+    writer.add_blank_page(width=400, height=500)
+    writer.add_blank_page(width=400, height=500)
+    writer.add_outline_item("Same", 0)
+    writer.add_outline_item("Same", 1)
+    stream = io.BytesIO()
+    writer.write(stream)
+    doc = Document(stream.getvalue())
+    original = doc.data
+    doc.rename_bookmark(1, "Second")
+    assert doc.bookmarks() == [
+        {"title": "Same", "page": 0, "depth": 0},
+        {"title": "Second", "page": 1, "depth": 0},
+    ]
+    doc.delete_bookmark(0)
+    assert doc.bookmarks() == [{"title": "Second", "page": 1, "depth": 0}]
+    doc.undo()
+    assert len(doc.bookmarks()) == 2
+    doc.undo()
+    assert doc.data == original
+
+
+def test_nested_bookmark_edit_refuses_without_changing_source():
+    writer = PdfWriter()
+    writer.add_blank_page(width=400, height=500)
+    parent = writer.add_outline_item("Parent", 0)
+    writer.add_outline_item("Child", 0, parent=parent)
+    stream = io.BytesIO()
+    writer.write(stream)
+    doc = Document(stream.getvalue())
+    original = doc.data
+    with pytest.raises(ValueError, match="top-level"):
+        doc.rename_bookmark(0, "Changed")
+    with pytest.raises(ValueError, match="top-level"):
+        doc.delete_bookmark(1)
+    assert doc.data == original
+
+
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
 def test_native_notes_survive_reopen_and_can_be_deleted(rotation, tmp_path):
     writer = PdfWriter(clone_from=io.BytesIO(form_pdf()))

@@ -880,6 +880,37 @@ class Document:
         visit(reader.outline, 0)
         return result
 
+    def _top_level_bookmark_items(self, writer: PdfWriter) -> tuple[object, list]:
+        root = writer.get_outline_root()
+        items = list(root.children())
+        shown = self.bookmarks()
+        if (
+            len(items) != len(shown)
+            or len(items) > 1000
+            or any("/First" in item for item in items)
+            or any(item["depth"] != 0 for item in shown)
+        ):
+            raise ValueError("Bookmark editing supports only simple top-level outlines.")
+        return root, items
+
+    def rename_bookmark(self, index: int, title: str) -> None:
+        if not isinstance(title, str) or not title.strip() or len(title) > 200:
+            raise ValueError("Enter a bookmark title up to 200 characters.")
+        writer = self.writer()
+        _, items = self._top_level_bookmark_items(writer)
+        if type(index) is not int or not 0 <= index < len(items):
+            raise ValueError("Choose a bookmark in this document.")
+        items[index][NameObject("/Title")] = TextStringObject(title.strip())
+        self.commit(writer)
+
+    def delete_bookmark(self, index: int) -> None:
+        writer = self.writer()
+        root, items = self._top_level_bookmark_items(writer)
+        if type(index) is not int or not 0 <= index < len(items):
+            raise ValueError("Choose a bookmark in this document.")
+        root.remove_child(items[index])
+        self.commit(writer)
+
     def notes(self, index: int) -> list[str]:
         if type(index) is not int or not 0 <= index < self.count:
             raise ValueError("Choose a page in this document.")

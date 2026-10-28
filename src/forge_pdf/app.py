@@ -771,10 +771,17 @@ class Editor(tk.Tk):
         dialog.geometry("480x360")
         listing = tk.Listbox(dialog, exportselection=False)
         listing.pack(fill="both", expand=True, padx=12, pady=12)
-        for item in bookmarks:
-            listing.insert(
-                "end", f"{'  ' * item['depth']}{item['title']}  ·  page {item['page'] + 1}"
-            )
+
+        def populate():
+            nonlocal bookmarks
+            bookmarks = self.doc.bookmarks()
+            listing.delete(0, "end")
+            for item in bookmarks:
+                listing.insert(
+                    "end", f"{'  ' * item['depth']}{item['title']}  ·  page {item['page'] + 1}"
+                )
+
+        populate()
 
         def navigate(event=None):
             if listing.curselection():
@@ -782,7 +789,34 @@ class Editor(tk.Tk):
                 dialog.destroy()
 
         listing.bind("<Double-Button-1>", navigate)
-        ttk.Button(dialog, text="Go to selected", command=navigate).pack(pady=(0, 12))
+        controls = ttk.Frame(dialog)
+        controls.pack(fill="x", padx=12, pady=(0, 12))
+        ttk.Button(controls, text="Go to selected", command=navigate).pack(side="left")
+
+        def edit_selected(delete=False):
+            if not listing.curselection():
+                return
+            index = listing.curselection()[0]
+            if delete:
+                self.change(lambda: self.doc.delete_bookmark(index))
+            else:
+                title = simpledialog.askstring(
+                    "Rename bookmark",
+                    "New title:",
+                    initialvalue=bookmarks[index]["title"],
+                    parent=dialog,
+                )
+                if title is None:
+                    return
+                self.change(lambda: self.doc.rename_bookmark(index, title))
+            populate()
+            if bookmarks:
+                listing.selection_set(min(index, len(bookmarks) - 1))
+            else:
+                dialog.destroy()
+
+        ttk.Button(controls, text="Rename", command=edit_selected).pack(side="left", padx=8)
+        ttk.Button(controls, text="Remove", command=lambda: edit_selected(True)).pack(side="left")
 
     def review_notes(self):
         if not self.doc:

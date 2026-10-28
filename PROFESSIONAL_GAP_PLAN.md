@@ -16,7 +16,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 1. Fill existing editable AcroForm text, simple choice, single-state checkbox and
    ordinary radio-group fields, with a field picker. XFA, complex choices, push
    buttons and signature fields remain unsupported.
-2. Edit common document metadata; add and browse bookmarks; add, edit, delete and browse
+2. Edit common document metadata; add, browse, rename and remove simple top-level bookmarks; add, edit, delete and browse
    native text notes; add and delete native highlight annotations; rotate page ranges;
    and add page labels when no custom labels exist.
 3. Search literal text with case and whole-word options and a browsable result list.
@@ -37,7 +37,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | P1 | OCR | Bounded offline searchable image-copy export, separate worker, per-page progress, cancellation and selection among installed language files are implemented. The source-built private preview passed synthetic OCR and a visible Windows export. A separate bounded text-layer copy now preserves original page objects for simple unrotated, uncropped image-only pages, with synthetic visual/text/navigation tests. Next: mixed and rotated pages, independent-viewer acceptance, and redistribution/compatibility gates. No document upload. |
 | P1 | Full forms | Existing text and simple choice fields, single-state checkboxes with custom on-state names, and ordinary radio groups are supported with a field picker. Synthetic tests verify widget appearances, reopen and Undo. Next: complex choice options, push buttons and independent-viewer appearance validation. XFA needs a separate decision. |
 | P1 | Annotation editing | Text notes can be edited and browsed across pages; native highlight annotations can be added and deleted. Later page-content edits may flatten them. Next: editable highlight geometry/colors and drawings with preservation through other edits. |
-| P1 | Bookmark navigation | Stage 3 adds browsing and page navigation. Next: rename, reorder and delete outline items; preserve destinations during page edits. |
+| P1 | Bookmark navigation | Browsing, page navigation, and rename/removal of simple top-level bookmarks are implemented with Undo. Synthetic tests verify retained destinations and refuse nested outlines. Next: nested editing, reorder and preservation checks after page organization. |
 | P2 | Search | Stage 4 adds case/whole-word options and a browsable result list. Next: position-highlighted glyphs, optional OCR index and measured bounded search over larger files. |
 | P2 | Page tools | Stage 3 adds batch rotate; stage 4 adds a bounded page-label range for documents without existing custom labels. Next: split, editing existing label structures, headers/watermarks and stronger link/bookmark preservation after organization. |
 | P2 | Export and accessibility | Image/text export, PDF/A or tagged PDF only with independent conformance validation, structure checks, alt text and reading-order support. |

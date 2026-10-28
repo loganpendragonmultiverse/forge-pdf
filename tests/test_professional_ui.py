@@ -58,7 +58,8 @@ def test_choice_checkbox_and_bookmark_navigation(tmp_path, monkeypatch):
         listing = next(w for w in dialog.winfo_children() if isinstance(w, tk.Listbox))
         assert "Controls" in listing.get(0)
         listing.selection_set(0)
-        button = next(w for w in dialog.winfo_children() if w.winfo_class() == "TButton")
+        controls = next(w for w in dialog.winfo_children() if w.winfo_class() == "TFrame")
+        button = next(w for w in controls.winfo_children() if w.cget("text") == "Go to selected")
         button.invoke()
         assert app.page == 0
         app.edit_form_fields_dialog()
@@ -76,6 +77,31 @@ def test_choice_checkbox_and_bookmark_navigation(tmp_path, monkeypatch):
         controls = next(w for w in dialog.winfo_children() if isinstance(w, ttk.Frame))
         next(w for w in controls.winfo_children() if w.cget("text") == "Apply value").invoke()
         assert app.doc.choice_fields()["tier"][0] == "Silver"
+    finally:
+        app.destroy()
+
+
+def test_bookmark_rename_remove_controls(tmp_path, monkeypatch):
+    app = Editor()
+    try:
+        app.doc = Document(controls_pdf())
+        app.path = tmp_path / "bookmarks.pdf"
+        app.doc.add_bookmark("Original", 0)
+        app.browse_bookmarks()
+        dialog = next(w for w in app.winfo_children() if isinstance(w, tk.Toplevel))
+        listing = next(w for w in dialog.winfo_children() if isinstance(w, tk.Listbox))
+        controls = next(w for w in dialog.winfo_children() if w.winfo_class() == "TFrame")
+        buttons = {w.cget("text"): w for w in controls.winfo_children()}
+        monkeypatch.setattr("forge_pdf.app.simpledialog.askstring", lambda *a, **kw: "Renamed")
+        listing.selection_set(0)
+        buttons["Rename"].invoke()
+        assert app.doc.bookmarks()[0]["title"] == "Renamed"
+        assert "Renamed" in listing.get(0)
+        buttons["Remove"].invoke()
+        assert app.doc.bookmarks() == []
+        assert not dialog.winfo_exists()
+        app.doc.undo()
+        assert app.doc.bookmarks()[0]["title"] == "Renamed"
     finally:
         app.destroy()
 

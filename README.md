@@ -34,7 +34,7 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 - Use two toolbar rows, a hideable pages panel and wrapped hints in smaller desktop windows.
 - Review an export summary of pages, links, form fields and annotations before sharing.
 - Fill existing editable text form fields, edit title/author/subject/keywords, and add a bookmark for the current page.
-- Fill simple choice fields, single-state checkboxes and ordinary radio groups; browse bookmarks; add and delete native
+- Fill simple choice fields, single-state checkboxes and ordinary radio groups; browse and edit simple top-level bookmarks; add and delete native
   text notes. Edit existing text notes and browse notes across the document. Rotate selected
   page ranges as one Undoable edit.
 - Use **Edit form fields** to choose supported fields from a list and edit them with

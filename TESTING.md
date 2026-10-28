@@ -64,3 +64,10 @@ radio groups, including widget appearance changes, serialized values, reopen
 and Undo. The Tk dialog and field picker are tested with a synthetic radio
 group. Independent-viewer appearance validation, complex choice fields and XFA
 remain open.
+
+## Bookmark editing review stage
+
+Synthetic two-page outlines verify top-level rename/removal, destination preservation
+and Undo. Nested outlines are refused without changing the source. Windows Tk
+tests exercise the Browse bookmarks Rename and Remove controls. Reordering and
+nested-outline editing remain open.
