@@ -2,6 +2,7 @@
 
 import pytest
 import hashlib
+import re
 
 from tools import build_windows
 
@@ -100,3 +101,14 @@ def test_private_ocr_bundle_requires_mingw_toolchain_notices(tmp_path):
         assert name in build_windows.OCR_NOTICE_SHA256
         with pytest.raises(ValueError, match=name.split("/")[-1]):
             build_windows.verify_ocr_notices(tmp_path)
+
+
+def test_private_ocr_pins_are_sha256_hex_digests():
+    pins = {
+        "engine": build_windows.OCR_ENGINE_SHA256,
+        "model": build_windows.ENGLISH_SHA256,
+        "config": build_windows.OCR_CONFIG_SHA256,
+        **build_windows.OCR_NOTICE_SHA256,
+    }
+    for name, digest in pins.items():
+        assert re.fullmatch(r"[0-9a-f]{64}", digest), f"Invalid SHA-256 pin: {name}"
