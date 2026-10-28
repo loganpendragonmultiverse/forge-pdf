@@ -2,7 +2,7 @@ charset-normalizer==3.5.1
 pillow==13.0.0
 pypdf==6.21.2
 pypdfium2==5.13.0
-reportlab==5.0.1
+reportlab==5.1.0
 cryptography==50.0.1
 cffi==2.1.1
 pycparser==3.0
