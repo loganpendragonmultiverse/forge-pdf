@@ -103,6 +103,10 @@ def add_support(destination: Path, ocr_bundle: Path | None = None):
         )
         verify_ocr_notices(ocr_bundle)
         shutil.copytree(ocr_bundle / "doc", licenses / "ocr", dirs_exist_ok=True)
+        shutil.copy2(
+            ROOT / "tools" / "notices" / "liblzma-COPYING.0BSD.txt",
+            licenses / "ocr" / "dependencies" / "liblzma-COPYING.0BSD.txt",
+        )
 
 
 def main():
