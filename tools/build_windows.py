@@ -14,30 +14,44 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 ENGLISH_SHA256 = "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+OCR_ENGINE_SHA256 = "2df0d8207b34b59dd95f93c0e5cda5eae8d626519d4dc7206a899cc23a82c5b8"
+OCR_CONFIG_SHA256 = "88630f865cdaa38ce52ad1688f51ed55596f125f85536ec29b1b11fed721545b"
+OCR_NOTICE_SHA256 = {
+    "LICENSE": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5",
+    "tessdata_fast-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "dependencies/giflib.txt": "0c9b7990ecdca88b676db232c226548ac408b279f550d424d996f0d83591dd8e",
+    "dependencies/leptonica.txt": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+    "dependencies/libjpeg-turbo.txt": "2189dc45a8fe96204069f8124caa53a148dfdc193f50f584c6ca7849a6072872",
+    "dependencies/liblzma.txt": "616a3ad264ce29b8f1cb97e53037b139d406899ca8d1f799651e17bfa09830b8",
+    "dependencies/libpng.txt": "16d9daaafbf63a31a5bdc91d4600972548fef5aaa1244202393288dbd079c49a",
+    "dependencies/libwebp.txt": "050b5ba2c8eb0bd3b996e12ef79312a1c62237f2de1b3c609843f00bb74744f3",
+    "dependencies/openjpeg.txt": "a6af136f3e15038a666b61f376612a07d9a4e48cb7c01adbf3e33b3f14ab49b6",
+    "dependencies/tiff.txt": "0e27c2382d7b8147972bbb746e04059a1152c8d0fda9d03ef1399d1a433c4ade",
+    "dependencies/zlib.txt": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243",
+}
 
 
 def verify_ocr_notices(ocr_bundle: Path) -> None:
-    required = [
-        "LICENSE",
-        "tessdata_fast-LICENSE.txt",
-        *(
-            f"dependencies/{name}.txt"
-            for name in (
-                "giflib",
-                "leptonica",
-                "libjpeg-turbo",
-                "liblzma",
-                "libpng",
-                "libwebp",
-                "openjpeg",
-                "tiff",
-                "zlib",
-            )
-        ),
-    ]
-    missing = [name for name in required if not (ocr_bundle / "doc" / name).is_file()]
+    missing = [name for name in OCR_NOTICE_SHA256 if not (ocr_bundle / "doc" / name).is_file()]
     if missing:
         raise ValueError(f"OCR bundle is missing required notices: {', '.join(missing)}")
+    for name, digest in OCR_NOTICE_SHA256.items():
+        if hashlib.sha256((ocr_bundle / "doc" / name).read_bytes()).hexdigest() != digest:
+            raise ValueError(f"OCR notice does not match the pinned source build: {name}")
+
+
+def verify_ocr_bundle(ocr_bundle: Path) -> None:
+    verify_ocr_notices(ocr_bundle)
+    if list(ocr_bundle.glob("*.dll")):
+        raise ValueError("Unexpected OCR DLL; only the audited static engine is allowed.")
+    for name, digest in (
+        ("tesseract.exe", OCR_ENGINE_SHA256),
+        ("tessdata/eng.traineddata", ENGLISH_SHA256),
+        ("tessdata/configs/pdf", OCR_CONFIG_SHA256),
+    ):
+        target = ocr_bundle / name
+        if not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+            raise ValueError(f"OCR bundle file does not match the pinned source build: {name}")
 
 
 def add_support(destination: Path, ocr_bundle: Path | None = None):
@@ -86,15 +100,10 @@ def add_support(destination: Path, ocr_bundle: Path | None = None):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
     if ocr_bundle is not None:
+        verify_ocr_bundle(ocr_bundle)
         model = ocr_bundle / "tessdata" / "eng.traineddata"
-        if hashlib.sha256(model.read_bytes()).hexdigest() != ENGLISH_SHA256:
-            raise ValueError("OCR English model does not match the pinned checksum.")
-        if not (ocr_bundle / "tesseract.exe").is_file():
-            raise ValueError("OCR engine is missing.")
         ocr_target = support / "ocr"
         ocr_target.mkdir()
-        for source in ocr_bundle.glob("*.dll"):
-            shutil.copy2(source, ocr_target / source.name)
         shutil.copy2(ocr_bundle / "tesseract.exe", ocr_target / "tesseract.exe")
         (ocr_target / "tessdata").mkdir()
         shutil.copy2(model, ocr_target / "tessdata" / model.name)
@@ -103,7 +112,6 @@ def add_support(destination: Path, ocr_bundle: Path | None = None):
             ocr_bundle / "tessdata" / "configs" / "pdf",
             ocr_target / "tessdata" / "configs" / "pdf",
         )
-        verify_ocr_notices(ocr_bundle)
         shutil.copytree(ocr_bundle / "doc", licenses / "ocr", dirs_exist_ok=True)
         shutil.copy2(
             ROOT / "tools" / "notices" / "liblzma-COPYING.0BSD.txt",
