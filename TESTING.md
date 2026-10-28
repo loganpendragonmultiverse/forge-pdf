@@ -79,3 +79,13 @@ reads at about 1.7 seconds before caching and 0.000009 seconds afterward
 on one Windows 11 x64 machine. Tests verify count after delete, append, Undo
 and Redo. This measurement does not establish overall large-file responsiveness
 or justify raising the 50 MB/500-page limits.
+
+
+## 1.3.0 release checks
+
+The Windows tag workflow builds from the annotated release tag, expands the pinned
+app-scoped OCR bundle, runs the suite and the portable launch/save/session check,
+and uploads release assets and checksums. Release acceptance on one Windows 11 x64
+device also covered synthetic form controls and the packaged OCR engine. Other
+Windows versions, independent viewer appearance, screen reader output and hostile
+PDF isolation have not been accepted.

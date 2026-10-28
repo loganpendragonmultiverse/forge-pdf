@@ -138,13 +138,8 @@ def main():
     )
     parser.add_argument("--ocr-bundle", type=Path, help="Verified app-scoped OCR binary folder")
     args = parser.parse_args()
-    if args.ocr_bundle and not args.preview:
-        raise SystemExit(
-            "Bundled OCR is limited to review previews until source-build notices, "
-            "compatibility, and release approval are verified."
-        )
     name = "Forge PDF Preview" if args.preview else "Forge PDF"
-    archive_name = "Forge-PDF-Preview-Windows" if args.preview else "Forge-PDF-1.2.0-Windows"
+    archive_name = "Forge-PDF-Preview-Windows" if args.preview else "Forge-PDF-1.3.0-Windows"
     subprocess.run(
         [
             sys.executable,

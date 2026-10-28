@@ -14,7 +14,7 @@ Original Forge PDF source is MIT. Runtime dependencies retain their respective l
 
 The Windows build script copies installed package license trees into `Support/licenses/` beside the executable. Those files, including PDFium third-party notices and Python/Tcl/Tk notices, must accompany any later binary distribution.
 
-## Optional offline OCR private preview
+## Bundled offline OCR on Windows
 
 The optional app-scoped English OCR bundle is a source-built Tesseract 5.5.3 executable and tessdata_fast model. Tesseract and the model are Apache-2.0. The static image-library graph is Leptonica 1.85.0, giflib 5.2.2, libjpeg-turbo 3.1.2, liblzma 5.8.1, libpng 1.6.50, libwebp 1.6.0, OpenJPEG 2.5.4, libtiff 4.7.1 and zlib 1.3.1. Their source notices are copied to `Support/licenses/ocr/dependencies/`; Tesseract and model licenses are in `Support/licenses/ocr/`.
 
@@ -22,4 +22,4 @@ The MinGW candidate uses GCC 16.2.0 and MinGW-w64 UCRT64. Its linked GCC runtime
 
 This software is based in part on the work of the Independent JPEG Group. The libjpeg-turbo terms are reproduced in `Support/licenses/ocr/dependencies/libjpeg-turbo.txt`. This distribution includes software developed by the University of California, Berkeley through libtiff's LZW component; the full libtiff and Berkeley notices are reproduced in `Support/licenses/ocr/dependencies/tiff.txt`.
 
-The MinGW executable imports Windows UCRT API-set DLLs and `KERNEL32.dll`. It contains no bundled OCR DLL or MSVC static runtime. The older MSVC and installer-derived OCR previews are superseded private review artifacts. Normal release builds still reject `--ocr-bundle` pending independent notice review, compatibility testing, exact portable-artifact acceptance and release approval.
+The MinGW executable imports Windows UCRT API-set DLLs and `KERNEL32.dll`. It contains no bundled OCR DLL or MSVC static runtime. The older MSVC and installer-derived OCR previews were private review artifacts and are not distributed.

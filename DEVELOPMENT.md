@@ -63,3 +63,12 @@ capture stable while previews are pending. Test real event-loop responsiveness a
 Use tools/native-pdf.Dockerfile for optional headless Linux development checks; it does not
 establish Windows package acceptance. Required Windows CI and exact portable-artifact smoke,
 plus synthetic crop/rotation/link/form/annotation comparisons, remain release gates.
+
+## 1.3.0 Windows OCR release
+
+The release workflow expands `vendor/ocr-bundle.zip` and passes that folder to
+`tools/build_windows.py --ocr-bundle`. The builder verifies the engine, English
+model, PDF config and OCR notices by SHA-256, and refuses extra OCR DLLs.
+Keep the source-build receipt and full component notices with the Windows ZIP.
+The OCR engine never uploads documents. Update its pinned hashes and notice
+inventory together if the engine or language data changes.

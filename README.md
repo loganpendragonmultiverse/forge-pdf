@@ -8,7 +8,7 @@ or upload. White out a line, add a replacement, remove a footer, or put pages in
 
 ## Quick start
 
-1. Download **Forge-PDF-1.2.0-Windows.zip** from the release page and extract it once.
+1. Download **Forge-PDF-1.3.0-Windows.zip** from the release page and extract it once.
 2. Open the **Forge PDF** folder and double-click **Forge PDF.exe**. No installation or Python setup is needed.
 3. Open a PDF, select **Whiteout**, and drag over the area you want to cover.
 4. Use **Add text** to place new text, then **Save a copy** under a different name.
@@ -23,7 +23,7 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 ## Features
 
 - Find literal document text across pages with case and whole-word options, a result list,
-  and next/previous matches. Use the optional offline OCR bundle to export a searchable
+  and next/previous matches. Use the bundled offline English OCR engine to export a searchable
   image copy of an image-only PDF.
 - Add text with a selected local TrueType font and check the entered text for missing glyphs.
 - Place PNG/JPEG image stamps with a drag preview and preserved transparency.
@@ -45,12 +45,12 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
 - Add a numbered or prefixed page-label range when the source has no custom labels;
   the pages panel displays the resulting labels.
 - Save an AES-256 password-encrypted PDF copy through **Page actions → Save encrypted copy**.
-- Use **Page actions → OCR searchable image copy** in the Windows preview with the
+- Use **Page actions → OCR searchable image copy** in the Windows app with the
   app-scoped English OCR bundle. It processes up to 20 pages locally and adds an
   invisible text layer to a new image PDF. This source stage processes pages in
   a separate worker with progress and Cancel; installed language files can be selected.
-  Review recognition before sharing. The bundled OCR binary remains private review
-  material pending native dependency license clearance.
+  Review recognition before sharing. The app-scoped engine and its notices are included
+  in the Windows ZIP; no document is uploaded.
 - Use **Page actions → OCR text layer on scanned pages** for a separate copy that
   retains original page graphics, links, bookmarks and metadata. This is limited
   to 20 simple unrotated, uncropped image pages with no existing text, forms or

@@ -34,7 +34,7 @@ Sources: [Adobe Acrobat features](https://www.adobe.com/acrobat/pricing/compare-
 | --- | --- | --- |
 | P0 | True redaction | Stage 3 provides a bounded rasterized export: every source page is rebuilt from pixels, the selected rectangle is blacked out, and source objects are absent from the new PDF. This loses text/vector fidelity and does not erase the open source document or old sessions. Next: precise object-preserving redaction, independent viewer/forensic validation and sensitive-copy lifecycle. Never label visual whiteout secure. |
 | P0 | Crash recovery | Opt-in history-free snapshots and atomic writes are implemented. The current stage marks recovery files, rejects ordinary sessions as recovery destinations, stops updates if a snapshot is replaced, and allows explicit deletion of a selected marked snapshot. Next: corruption/restart UI acceptance and optional user-directed retention policy. No automatic cleanup. |
-| P1 | OCR | Bounded offline searchable image-copy export, separate worker, per-page progress, cancellation and selection among installed language files are implemented. The source-built private preview passed synthetic OCR and a visible Windows export. A separate bounded text-layer copy now preserves original page objects for simple unrotated, uncropped image-only pages, with synthetic visual/text/navigation tests. Next: mixed and rotated pages, independent-viewer acceptance, and redistribution/compatibility gates. No document upload. |
+| P1 | OCR | Bounded offline searchable image-copy export, separate worker, per-page progress, cancellation and selection among installed language files are implemented. The source-built Windows engine passed synthetic OCR and a visible Windows export. A separate bounded text-layer copy now preserves original page objects for simple unrotated, uncropped image-only pages, with synthetic visual/text/navigation tests. Next: mixed and rotated pages, independent-viewer acceptance, and compatibility on more Windows devices. No document upload. |
 | P1 | Full forms | Existing text and simple choice fields, single-state checkboxes with custom on-state names, and ordinary radio groups are supported with a field picker. Synthetic tests verify widget appearances, reopen and Undo. Next: complex choice options, push buttons and independent-viewer appearance validation. XFA needs a separate decision. |
 | P1 | Annotation editing | Text notes can be edited and browsed across pages; native highlight annotations can be added, recolored and deleted. Recoloring refuses custom appearance streams. Later page-content edits may flatten them. Next: editable highlight geometry and drawings with preservation through other edits. |
 | P1 | Bookmark navigation | Browsing, page navigation, and rename/removal of simple top-level bookmarks are implemented with Undo. Synthetic tests verify retained destinations and refuse nested outlines. Next: nested editing, reorder and preservation checks after page organization. |
@@ -48,7 +48,7 @@ image stamp is not a digital signature. No change here claims signature validati
 
 ## OCR distribution and measured compatibility
 
-The private review preview now uses an app-scoped Tesseract 5.5.3 executable
+The Windows release uses an app-scoped Tesseract 5.5.3 executable
 compiled from the official tag with pinned static vcpkg dependencies. It
 bundles English from tessdata_fast, the PDF config and component notices.
 `OCR_SOURCE_BUILD_AUDIT.md` records commits, versions, hashes and imports.
@@ -63,11 +63,10 @@ GitHub Actions tested the Python app on Windows Server 2025 `windows-latest` run
 Python 3.11 and 3.14; those jobs do not exercise the bundled OCR executable.
 No Windows on ARM, Windows 10 or older Windows 11 build has been accepted.
 
-Release gates: independently review every redistributed notice and source
-receipt; exercise a clean x64 Windows machine and supported Windows versions;
-rerun exact artifact security and UI acceptance; then obtain release approval.
-Normal release builds reject `--ocr-bundle` until that gate is changed
-deliberately.
+The v1.3.0 packaging gate pins the engine, English model, configuration and notice
+files by SHA-256 and rejects unexpected OCR DLLs. Compatibility beyond the
+accepted Windows 11 x64 device remains unverified; the release notes state
+that limit.
 
 ## Remaining architecture stages
 
