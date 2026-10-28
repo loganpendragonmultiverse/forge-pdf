@@ -71,9 +71,9 @@ as an independent release gate; it does not infer permission solely from
 the DLL import list.
 
 
-## Exact private preview acceptance
+## Historical private preview acceptance
 
-The final review ZIP is 41,576,256 bytes, SHA-256
+The earlier source-build review ZIP was 41,576,256 bytes, SHA-256
 `e9339c98f1c250fa2ffd6367855bfdcb579791f35bdecef362a55bf4b32fe61a`.
 It includes this audit, `THIRD_PARTY_NOTICES.md`, the Tesseract and
 tessdata_fast licenses, and nine static dependency copyright files.
