@@ -4,8 +4,10 @@ import argparse
 import importlib.metadata as metadata
 import shutil
 import hashlib
+import os
 import subprocess
 import sys
+import tkinter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,6 +114,10 @@ def add_support(destination: Path, ocr_bundle: Path | None = None):
 def main():
     if sys.platform != "win32":
         raise SystemExit("Build this Windows preview on Windows.")
+    try:
+        tkinter.Tcl().eval("info patchlevel")
+    except tkinter.TclError as exc:
+        raise SystemExit(f"Tcl/Tk is unavailable; Windows preview build stopped: {exc}") from exc
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--preview", action="store_true", help="Build a separately named local preview"
@@ -134,6 +140,8 @@ def main():
             "--windowed",
             "--name",
             name,
+            "--paths",
+            str(ROOT / "src"),
             "--collect-all",
             "pypdfium2",
             "--collect-all",
@@ -143,6 +151,10 @@ def main():
             str(ROOT / "tools" / "desktop_entry.py"),
         ],
         cwd=ROOT,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(ROOT / "src") + os.pathsep + os.environ.get("PYTHONPATH", ""),
+        },
         check=True,
     )
     add_support(ROOT / "dist" / name, args.ocr_bundle)
