@@ -16,7 +16,14 @@ jobs:
       - run: python -m pip install -r requirements-lock.txt -e ".[dev]"
       - run: python -m pytest -q
       - run: python -m build
-      - run: python tools/build_windows.py
+      - run: Expand-Archive -LiteralPath vendor/ocr-bundle.zip -DestinationPath ocr-bundle
+      - run: python tools/build_windows.py --ocr-bundle ocr-bundle
+      - run: python tools/verify_windows_portable.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: forge-pdf-portable-acceptance
+          path: portable-acceptance/
+          if-no-files-found: error
       - run: python tools/checksums.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
