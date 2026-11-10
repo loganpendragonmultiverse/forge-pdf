@@ -89,3 +89,11 @@ and uploads release assets and checksums. Release acceptance on one Windows 11 x
 device also covered synthetic form controls and the packaged OCR engine. Other
 Windows versions, independent viewer appearance, screen reader output and hostile
 PDF isolation have not been accepted.
+
+## 1.4.0 acceptance
+
+Exercise range rotation, reordering, deletion, and insertion from a password-opened PDF.
+Verify outlines and links to retained pages after reordering and subset export. Test batch
+marks across all crop/rotation cases, and check that a mark which fails to fit any page
+commits nothing. Confirm archive order, UTF-8 page labels, source protection, and retained
+Undo/Redo after exporting. Exercise Page actions with the sidebar hidden.
