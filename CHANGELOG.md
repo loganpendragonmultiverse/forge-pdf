@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.4.0 - 2026-11-09
+
+- Add full-document reordering, range deletion, and ordered page insertion from another PDF.
+  Appending and inserting now prompt for a password when the other PDF requires one.
+- Rotate selected ranges left, right, or 180 degrees.
+- Apply headers, footers, page numbers, and translucent text watermarks in one Undo step.
+- Split selected pages into separate PDFs, export rendered PNG or JPEG pages to a ZIP, and
+  save embedded text to UTF-8.
+- Add Fit width and first/last page navigation.
+- Preserve internal links between retained pages in a subset export, and keep the active
+  page stationary when a move fails.
+- Keep text-control Undo/Redo shortcuts from editing the document, report effective preview
+  zoom when rendering is capped, and derive Windows archive names from the package version.
+
 ## 1.3.0 - 2026-10-28
 
 - Add offline English OCR image-copy and limited source-preserving text-layer exports with progress and cancellation. The Windows ZIP includes a pinned, source-built Tesseract engine and notices.

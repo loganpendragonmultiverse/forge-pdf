@@ -234,3 +234,32 @@ def test_closing_find_reaps_active_search_and_allows_another(editor):
         time.sleep(0.005)
     assert second is not first and app.search_results
     assert not errors
+
+
+def test_failed_page_move_does_not_advance_selection(editor, monkeypatch):
+    app, errors = editor
+
+    def fail(*args):
+        raise ValueError("Synthetic write failure")
+
+    monkeypatch.setattr(app.doc, "move", fail)
+    app.move(1)
+    assert app.page == 0
+    assert errors == ["Synthetic write failure"]
+
+
+def test_new_range_actions_run_with_sidebar_hidden(editor, tmp_path, monkeypatch):
+    app, errors = editor
+    app.toggle_sidebar()
+    responses = iter((f"2-{app.doc.count},1", "1"))
+    monkeypatch.setattr("forge_pdf.app.simpledialog.askstring", lambda *a, **kw: next(responses))
+    app.reorder_ranges()
+    assert app.page == app.doc.count - 1
+    assert len(app.doc.undo_stack) == 1
+    destination = tmp_path / "selection.txt"
+    monkeypatch.setattr("forge_pdf.app.filedialog.asksaveasfilename", lambda **kw: str(destination))
+    app.export_range_files("txt")
+    assert destination.read_text(encoding="utf-8").startswith("--- Page 1 ---")
+    app.fit_width()
+    wait_preview(app)
+    assert app.fit == "width" and not errors

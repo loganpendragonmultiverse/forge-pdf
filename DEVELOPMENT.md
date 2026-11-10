@@ -72,3 +72,11 @@ model, PDF config and OCR notices by SHA-256, and refuses extra OCR DLLs.
 Keep the source-build receipt and full component notices with the Windows ZIP.
 The OCR engine never uploads documents. Update its pinned hashes and notice
 inventory together if the engine or language data changes.
+
+## 1.4.0 page tools
+
+Page range mutations commit once. Reordering keeps page references within the cloned
+document. Page-number order follows the entered page range. Batch marks use the visible
+crop/rotation transform and leave annotations separate. Single-page split PDFs and image
+exports use an ordered ZIP with generated filenames and an atomic destination write.
+Archive and text exports leave the active document, saved state and Undo history alone.

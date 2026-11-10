@@ -23,7 +23,11 @@ def _work(connection, memory_name, length, role, params, cancel_event):
             width, height = document.size(params["page"])
             zoom = params["zoom"]
             if params["fit"]:
-                zoom = max(0.05, min((params["cw"] - 48) / width, (params["ch"] - 48) / height, 2))
+                limits = [(params["cw"] - 48) / width, 2]
+                if params["fit"] != "width":
+                    limits.append((params["ch"] - 48) / height)
+                zoom = max(0.05, min(limits))
+            zoom = min(zoom, 3000 / max(width, height))
             image = document.render(params["page"], zoom)
             result = dict(
                 params,

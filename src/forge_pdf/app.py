@@ -134,7 +134,9 @@ class Editor(tk.Tk):
             "<Control-z>",
             lambda e: (
                 self.history(False)
-                if not isinstance(self.focus_get(), (tk.Text, tk.Entry, ttk.Spinbox))
+                if not isinstance(
+                    self.focus_get(), (tk.Text, tk.Entry, ttk.Entry, ttk.Combobox, ttk.Spinbox)
+                )
                 else None
             ),
         )
@@ -142,7 +144,9 @@ class Editor(tk.Tk):
             "<Control-y>",
             lambda e: (
                 self.history(True)
-                if not isinstance(self.focus_get(), (tk.Text, tk.Entry, ttk.Spinbox))
+                if not isinstance(
+                    self.focus_get(), (tk.Text, tk.Entry, ttk.Entry, ttk.Combobox, ttk.Spinbox)
+                )
                 else None
             ),
         )
@@ -321,6 +325,43 @@ class Editor(tk.Tk):
             label="Insert blank page after",
             command=lambda: self.change(lambda: self.doc.insert_blank(self.page)),
         )
+        organize = tk.Menu(menu, tearoff=False)
+        organize.add_command(label="Reorder all pages…", command=self.reorder_ranges)
+        organize.add_command(label="Delete page ranges…", command=self.delete_ranges)
+        organize.add_command(label="Insert selected pages from PDF…", command=self.insert_ranges)
+        for label, degrees in (("Rotate left", -90), ("Rotate right", 90), ("Rotate 180°", 180)):
+            organize.add_command(
+                label=f"{label} by page range…",
+                command=lambda degrees=degrees: self.rotate_ranges(degrees),
+            )
+        menu.add_cascade(label="Organize pages", menu=organize)
+        marks = tk.Menu(menu, tearoff=False)
+        for label, kind in (
+            ("Add header", "header"),
+            ("Add footer", "footer"),
+            ("Add watermark", "watermark"),
+            ("Add page numbers", "numbers"),
+        ):
+            marks.add_command(label=f"{label}…", command=lambda kind=kind: self.mark_ranges(kind))
+        menu.add_cascade(label="Headers, footers and watermarks", menu=marks)
+        export = tk.Menu(menu, tearoff=False)
+        for label, kind in (
+            ("Split into one PDF per page (ZIP)", "pdf"),
+            ("Export PNG pages (ZIP)", "png"),
+            ("Export JPEG pages (ZIP)", "jpg"),
+            ("Export embedded text (TXT)", "txt"),
+        ):
+            export.add_command(
+                label=f"{label}…", command=lambda kind=kind: self.export_range_files(kind)
+            )
+        menu.add_cascade(label="Split and export", menu=export)
+        menu.add_command(label="Fit width", command=self.fit_width)
+        menu.add_command(label="Go to first page", command=lambda: self.show_page(0))
+        menu.add_command(
+            label="Go to last page",
+            command=lambda: self.show_page(self.doc.count - 1) if self.doc else None,
+        )
+        menu.add_separator()
         menu.add_command(label="Export this page…", command=self.export_page)
         menu.add_command(label="Export page ranges…", command=self.export_ranges)
         menu.add_command(label="Rotate page ranges right…", command=self.rotate_ranges)
@@ -446,20 +487,9 @@ class Editor(tk.Tk):
         if not self.discard_ok():
             return
         try:
-            try:
-                candidate = Document.open(path)
-            except ValueError as exc:
-                if "Password" not in str(exc):
-                    raise
-                password = simpledialog.askstring(
-                    "Open protected PDF",
-                    "PDF password (saved edited copies will be unencrypted):",
-                    show="*",
-                    parent=self,
-                )
-                if password is None:
-                    return
-                candidate = Document.open(path, password)
+            candidate = self.read_input_pdf(path)
+            if candidate is None:
+                return
             candidate.render(0, 0.2)  # Validate rendering before replacing the current document.
             self.stop_recovery()
             self.doc, self.path, self.page, self.fit = candidate, path, 0, False
@@ -469,6 +499,20 @@ class Editor(tk.Tk):
             self.refresh()
         except Exception as exc:
             self.error(exc)
+
+    def read_input_pdf(self, path):
+        try:
+            return Document.open(path)
+        except ValueError as exc:
+            if "Password" not in str(exc):
+                raise
+        password = simpledialog.askstring(
+            "Open protected PDF",
+            "PDF password (ordinary edited copies will be unencrypted):",
+            show="*",
+            parent=self,
+        )
+        return Document.open(path, password) if password is not None else None
 
     def save(self):
         if not self.doc:
@@ -944,20 +988,156 @@ class Editor(tk.Tk):
             pady=(0, 12)
         )
 
-    def rotate_ranges(self):
+    def ask_pages(self, title, document, initial, hint="Use one-based pages such as 1,3-5."):
+        selection = simpledialog.askstring(
+            title, f"Pages 1 to {document.count}. {hint}", parent=self, initialvalue=initial
+        )
+        if selection is None:
+            return None
+        try:
+            return parse_page_ranges(selection, document.count)
+        except ValueError as exc:
+            self.error(exc)
+            return None
+
+    def rotate_ranges(self, degrees=90):
+        if self.doc:
+            indices = self.ask_pages("Rotate page ranges", self.doc, str(self.page + 1))
+            if indices is not None:
+                self.change(lambda: self.doc.rotate_pages(indices, degrees))
+
+    def reorder_ranges(self):
         if not self.doc:
             return
-        selection = simpledialog.askstring(
-            "Rotate page ranges",
-            f"Pages to rotate right (1-{self.doc.count}, e.g. 1,3-5):",
+        order = self.ask_pages(
+            "Reorder all pages",
+            self.doc,
+            f"1-{self.doc.count}",
+            "Enter every page once in the new order, for example 3,1-2.",
+        )
+        if order is not None:
+
+            def reorder():
+                self.doc.reorder_pages(order)
+                self.page = order.index(self.page)
+
+            self.change(reorder)
+
+    def delete_ranges(self):
+        if not self.doc:
+            return
+        indices = self.ask_pages("Delete page ranges", self.doc, str(self.page + 1))
+        if indices is not None and messagebox.askyesno(
+            "Delete page ranges",
+            f"Remove {len(indices)} selected pages? You can undo this.",
+            parent=self,
+        ):
+
+            def delete():
+                self.doc.delete_pages(indices)
+                self.page -= sum(index < self.page for index in indices)
+
+            self.change(delete)
+
+    def insert_ranges(self):
+        if not self.doc:
+            return
+        path = filedialog.askopenfilename(
+            parent=self, title="Choose the source PDF", filetypes=[("PDF documents", "*.pdf")]
+        )
+        if not path:
+            return
+        try:
+            source = self.read_input_pdf(Path(path))
+            if source is None:
+                return
+            indices = self.ask_pages(
+                "Insert pages after the current page", source, f"1-{source.count}"
+            )
+            if indices is not None:
+
+                def insert():
+                    self.doc.insert_pages(source, indices, self.page + 1)
+                    self.page += 1
+
+                self.change(insert)
+        except Exception as exc:
+            self.error(exc)
+
+    def mark_ranges(self, kind):
+        if not self.doc:
+            return
+        title = {
+            "header": "Add header",
+            "footer": "Add footer",
+            "watermark": "Add watermark",
+            "numbers": "Add page numbers",
+        }[kind]
+        indices = self.ask_pages(title, self.doc, f"1-{self.doc.count}")
+        if indices is None:
+            return
+        text, start = "", 1
+        if kind == "numbers":
+            start = simpledialog.askinteger(
+                title,
+                "Starting number (numbering follows the entered page order):",
+                minvalue=1,
+                maxvalue=100000,
+                initialvalue=1,
+                parent=self,
+            )
+            if start is None:
+                return
+        else:
+            text = simpledialog.askstring(title, "Text to add to each selected page:", parent=self)
+            if text is None:
+                return
+        size = simpledialog.askinteger(
+            title,
+            "Text size in points:",
+            minvalue=8,
+            maxvalue=72,
+            initialvalue=32 if kind == "watermark" else 12,
             parent=self,
         )
-        if selection is not None:
-            try:
-                indices = parse_page_ranges(selection, self.doc.count)
-                self.change(lambda: self.doc.rotate_pages(indices))
-            except Exception as exc:
-                self.error(exc)
+        if size is not None:
+            self.change(
+                lambda: self.doc.mark_pages(indices, kind, text, size, start, self.local_font)
+            )
+
+    def export_range_files(self, kind):
+        if not self.doc:
+            return
+        text_export = kind == "txt"
+        title = "Export embedded text" if text_export else f"Export {kind.upper()} pages to ZIP"
+        hint = "Extracts existing text only." if text_export else "Choose up to 20 pages."
+        indices = self.ask_pages(title, self.doc, str(self.page + 1), hint)
+        if indices is None:
+            return
+        extension = ".txt" if text_export else ".zip"
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title=title,
+            initialdir=self.path.parent,
+            initialfile=f"{self.path.stem}-{kind}-pages{extension}",
+            defaultextension=extension,
+            filetypes=[("Text document" if text_export else "ZIP archive", f"*{extension}")],
+            confirmoverwrite=True,
+        )
+        if not path:
+            return
+        try:
+            destination = Path(path)
+            overwrite = destination.exists()
+            if text_export:
+                self.doc.export_text(indices, destination, overwrite=overwrite)
+            else:
+                self.doc.export_page_archive(indices, destination, kind, overwrite=overwrite)
+            self.status.configure(
+                text=f"Exported {len(indices)} selected pages to {destination.name}"
+            )
+        except Exception as exc:
+            self.error(exc)
 
     def page_labels_dialog(self):
         if not self.doc:
@@ -1292,9 +1472,12 @@ class Editor(tk.Tk):
 
     def move(self, delta):
         if self.doc and 0 <= self.page + delta < self.doc.count:
-            self.change(lambda: self.doc.move(self.page, self.page + delta))
-            self.page += delta
-            self.refresh()
+
+            def move_page():
+                self.doc.move(self.page, self.page + delta)
+                self.page += delta
+
+            self.change(move_page)
 
     def delete(self):
         if self.doc and messagebox.askyesno(
@@ -1313,7 +1496,16 @@ class Editor(tk.Tk):
             filetypes=[("PDF documents", "*.pdf")],
         )
         if path:
-            self.change(lambda: self.doc.append(Path(path)))
+            try:
+                source = self.read_input_pdf(Path(path))
+                if source is not None:
+                    self.change(
+                        lambda: self.doc.insert_pages(
+                            source, list(range(source.count)), self.doc.count
+                        )
+                    )
+            except Exception as exc:
+                self.error(exc)
 
     def export_page(self):
         if not self.doc:
@@ -1601,6 +1793,10 @@ class Editor(tk.Tk):
 
     def fit_page(self):
         self.fit = True
+        self.render()
+
+    def fit_width(self):
+        self.fit = "width"
         self.render()
 
     def zoom_by(self, multiplier):

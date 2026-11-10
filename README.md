@@ -8,7 +8,7 @@ or upload. White out a line, add a replacement, remove a footer, or put pages in
 
 ## Quick start
 
-1. Download **Forge-PDF-1.3.0-Windows.zip** from the release page and extract it once.
+1. Download **Forge-PDF-1.4.0-Windows.zip** from the release page and extract it once.
 2. Open the **Forge PDF** folder and double-click **Forge PDF.exe**. No installation or Python setup is needed.
 3. Open a PDF, select **Whiteout**, and drag over the area you want to cover.
 4. Use **Add text** to place new text, then **Save a copy** under a different name.
@@ -21,6 +21,15 @@ is the ready-to-run application.
 and images remain in the PDF and can be extracted. Do not use them to remove secrets.**
 
 ## Features
+
+- Reorder every page in one operation, delete selected ranges, or insert selected pages
+  from another PDF, including password-protected inputs. Rotate ranges left, right, or 180°.
+- Add headers, footers, translucent watermarks, or sequential page numbers to selected pages.
+  These become page content and leave existing annotations in place. Use Undo to reverse the batch.
+- Split selected pages into separate PDFs in a ZIP, export PNG or JPEG pages to a ZIP, or
+  save embedded text as UTF-8. Archives accept up to 20 pages. Image output renders the
+  visible page at up to 2× with a 3,000-pixel long-edge cap. Text export does not run OCR.
+- Fit the page to the window width or jump to the first or last page from Page actions.
 
 - Find literal document text across pages with case and whole-word options, a result list,
   and next/previous matches. Use the bundled offline English OCR engine to export a searchable
