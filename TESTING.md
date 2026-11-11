@@ -97,3 +97,10 @@ Verify outlines and links to retained pages after reordering and subset export. 
 marks across all crop/rotation cases, and check that a mark which fails to fit any page
 commits nothing. Confirm archive order, UTF-8 page labels, source protection, and retained
 Undo/Redo after exporting. Exercise Page actions with the sidebar hidden.
+
+## 1.5.0 acceptance
+
+Check the nested toolbar and sidebar menus, including access with the sidebar hidden.
+Exercise page order and duplicate undo, rotated crop and reset, protected image sources,
+drawing appearance and retained annotations, clipboard text, and compressed copy fidelity.
+Check that preview colors and exports leave source bytes and edit history alone.

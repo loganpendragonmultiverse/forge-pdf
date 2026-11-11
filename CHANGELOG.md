@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.5.0 - 2026-11-11
+
+- Organize Page actions into eight short submenus and keep all existing commands available.
+- Create blank PDFs with paper and orientation choices, create PDFs from PNG/JPEG
+  files, and insert image pages into an open document.
+- Reverse page order, group odd or even pages first, move a range, and duplicate
+  selected pages.
+- Crop by dragging, apply exact margins to ranges, and reset to the full page.
+- Draw rectangles and ellipses with outlined or filled styles, lines and arrows.
+  Choose text, highlight and drawing colors and set line thickness.
+- Save the current page as PNG or JPEG, copy its embedded text, and save a lossless
+  compressed PDF copy.
+- Fit height, toggle full screen, and preview in grayscale or inverted colors.
+- Inspect document information and embedded URI links, or clear the four common metadata fields.
+- Stop local recovery snapshots when imported pages came from a password-protected PDF.
+
 ## 1.4.0 - 2026-11-09
 
 - Add full-document reordering, range deletion, and ordered page insertion from another PDF.
