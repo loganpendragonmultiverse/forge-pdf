@@ -87,3 +87,10 @@ The toolbar and sidebar share the same Page actions menu. Crop and vector drawin
 the visible page transform and one undoable commit. New drawings leave native annotations
 in place. Image import tracks source file identities and applies EXIF orientation. Preview
 colors are applied inside the preview worker and never affect the document or exports.
+
+## 1.6.0 publishing tools
+
+The publishing module lays out text and worksheet PDFs and builds bounded contact
+sheets, split and image archives, and CSV reports. Exports reuse source identity
+checks and atomic publication. Imported text files keep their source identity after
+insertion. CSV reports neutralize formula prefixes before writing cells.

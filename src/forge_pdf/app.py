@@ -23,6 +23,18 @@ from .enhancements import (
     RESOURCE_BYTES,
 )
 
+from .publishing import (
+    WORKSHEETS,
+    export_contact_sheet,
+    export_rendered_archive,
+    export_report,
+    export_split,
+    split_groups,
+    text_document,
+    text_file_document,
+    worksheet,
+)
+
 NAVY = "#16232f"
 MINT = "#a9edcc"
 PAPER = "#f7f8fa"
@@ -399,6 +411,9 @@ class Editor(tk.Tk):
             (
                 ("New blank document…", self.new_blank),
                 ("New document from images…", self.new_from_images),
+                ("New PDF from pasted text…", self.paste_text_pdf),
+                ("New PDF from a UTF-8 text file…", self.import_text_pdf),
+                ("New worksheet PDF…", lambda: self.new_blank(template=True)),
             ),
         )
         organize = self.menu_group(menu, "Organize pages")
@@ -447,6 +462,9 @@ class Editor(tk.Tk):
             (
                 ("Insert selected pages from PDF…", self.insert_ranges),
                 ("Insert images as pages…", self.insert_images),
+                ("Insert pasted text as pages…", lambda: self.paste_text_pdf(insert=True)),
+                ("Insert UTF-8 text file as pages…", lambda: self.import_text_pdf(insert=True)),
+                ("Insert worksheet pages…", lambda: self.new_blank(template=True, insert=True)),
                 ("Merge another PDF…", self.merge),
             ),
         )
@@ -525,6 +543,17 @@ class Editor(tk.Tk):
         )
         self.menu_group(
             export,
+            "Batch publishing",
+            (
+                ("Split every N pages…", lambda: self.split_pdf()),
+                ("Split at specific page numbers…", lambda: self.split_pdf(by_starts=True)),
+                ("Export page contact sheet…", self.contact_sheet),
+                ("Export PNG archive with options…", lambda: self.advanced_images("png")),
+                ("Export JPEG archive with options…", lambda: self.advanced_images("jpg")),
+            ),
+        )
+        self.menu_group(
+            export,
             "Images and text",
             (
                 ("Save current page as PNG…", lambda: self.export_single("png")),
@@ -533,6 +562,7 @@ class Editor(tk.Tk):
                 ("Export JPEG pages (ZIP)…", lambda: self.export_range_files("jpg")),
                 ("Export embedded text (TXT)…", lambda: self.export_range_files("txt")),
                 ("Copy current page text", self.copy_page_text),
+                ("Read current page text…", self.read_page_text),
             ),
         )
         self.menu_group(
@@ -587,6 +617,14 @@ class Editor(tk.Tk):
                 ("Browse bookmarks…", self.browse_bookmarks),
             ),
         )
+        reports = self.menu_group(document, "CSV reports")
+        for label, kind in (
+            ("Page sizes and rotation", "pages"),
+            ("Embedded links", "links"),
+            ("Text notes", "notes"),
+            ("Bookmarks", "bookmarks"),
+        ):
+            reports.add_command(label=f"{label}…", command=lambda kind=kind: self.save_report(kind))
         return menu
 
     def error(self, exc):
@@ -628,44 +666,117 @@ class Editor(tk.Tk):
         self.view_target = (0, 0)
         self.refresh()
 
-    def new_blank(self):
+    def new_blank(self, template=False, insert=False):
+        if insert and not self.doc:
+            return
         dialog = tk.Toplevel(self)
-        dialog.title("New blank PDF")
+        dialog.title(
+            "Insert worksheet pages"
+            if insert
+            else "New worksheet PDF"
+            if template
+            else "New blank PDF"
+        )
         dialog.transient(self)
         options = ttk.Frame(dialog, padding=16)
         options.pack(fill="both", expand=True)
         paper = tk.StringVar(dialog, value="Letter")
         landscape = tk.BooleanVar(dialog)
         count = tk.StringVar(dialog, value="1")
+        pattern = tk.StringVar(dialog, value=WORKSHEETS[0])
         ttk.Label(options, text="Paper size").grid(row=0, column=0, sticky="w", padx=(0, 12))
         ttk.Combobox(options, textvariable=paper, values=tuple(PAGE_SIZES), state="readonly").grid(
             row=0, column=1
         )
         ttk.Label(options, text="Pages").grid(row=1, column=0, sticky="w")
-        ttk.Spinbox(options, textvariable=count, from_=1, to=500, width=8).grid(
-            row=1, column=1, sticky="w"
-        )
+        ttk.Spinbox(
+            options, textvariable=count, from_=1, to=100 if template else 500, width=8
+        ).grid(row=1, column=1, sticky="w")
         ttk.Checkbutton(options, text="Landscape", variable=landscape).grid(
             row=2, columnspan=2, sticky="w"
         )
 
+        if template:
+            ttk.Label(options, text="Pattern").grid(row=3, column=0, sticky="w")
+            ttk.Combobox(options, textvariable=pattern, values=WORKSHEETS, state="readonly").grid(
+                row=3, column=1
+            )
+
         def create():
             try:
-                candidate = Document.blank(int(count.get()), paper.get(), landscape.get())
+                if template:
+                    candidate = worksheet(
+                        pattern.get(), int(count.get()), paper.get(), landscape.get()
+                    )
+                else:
+                    candidate = Document.blank(int(count.get()), paper.get(), landscape.get())
             except ValueError as exc:
                 messagebox.showerror("Cannot create PDF", str(exc), parent=dialog)
                 return
             dialog.destroy()
-            if self.discard_ok():
-                try:
-                    self.replace_document(candidate, Path.cwd() / "Untitled.pdf")
-                except Exception as exc:
-                    self.error(exc)
+            self.accept_created_document(
+                candidate, "Worksheet.pdf" if template else "Untitled.pdf", insert
+            )
 
-        ttk.Button(options, text="Create", command=create).grid(row=3, column=1, sticky="e")
-        ttk.Button(options, text="Cancel", command=dialog.destroy).grid(row=3, column=0, sticky="w")
+        ttk.Button(options, text="Insert" if insert else "Create", command=create).grid(
+            row=4, column=1, sticky="e"
+        )
+        ttk.Button(options, text="Cancel", command=dialog.destroy).grid(row=4, column=0, sticky="w")
         dialog.bind("<Escape>", lambda event: (dialog.destroy(), "break")[1])
         dialog.grab_set()
+
+    def accept_created_document(self, candidate, name, insert):
+        try:
+            if insert:
+                self.change(
+                    lambda: self.doc.insert_pages(
+                        candidate, list(range(candidate.count)), self.page + 1
+                    )
+                )
+            elif self.discard_ok():
+                self.replace_document(candidate, Path.cwd() / name)
+        except Exception as exc:
+            self.error(exc)
+
+    def paste_text_pdf(self, insert=False):
+        if insert and not self.doc:
+            return
+        title = "Insert text as pages" if insert else "Create PDF from text"
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.transient(self)
+        ttk.Label(
+            dialog, text="Paste plain text. Forge PDF wraps and paginates it on Letter pages."
+        ).pack(anchor="w", padx=12, pady=8)
+        field = tk.Text(dialog, width=64, height=14, wrap="word")
+        field.pack(fill="both", expand=True, padx=12, pady=6)
+
+        def submit():
+            try:
+                candidate = text_document(field.get("1.0", "end-1c"), self.local_font)
+            except Exception as exc:
+                messagebox.showerror(title, str(exc), parent=dialog)
+                return
+            dialog.destroy()
+            self.accept_created_document(candidate, "Text.pdf", insert)
+
+        ttk.Button(dialog, text="Insert" if insert else "Create", command=submit).pack(pady=8)
+        dialog.bind("<Escape>", lambda event: (dialog.destroy(), "break")[1])
+        field.focus_set()
+        dialog.grab_set()
+
+    def import_text_pdf(self, insert=False):
+        if insert and not self.doc:
+            return
+        path = filedialog.askopenfilename(
+            parent=self, title="Choose a UTF-8 text file", filetypes=[("Text files", "*.txt")]
+        )
+        if path:
+            try:
+                candidate = text_file_document(Path(path), self.local_font)
+                self.accept_created_document(candidate, Path(path).stem + ".pdf", insert)
+            except Exception as exc:
+                self.error(exc)
 
     def choose_image_pages(self):
         paths = filedialog.askopenfilenames(
@@ -1436,6 +1547,145 @@ class Editor(tk.Tk):
         except Exception as exc:
             self.error(exc)
 
+    def publish_file(self, title, suffix, name, export):
+        path = filedialog.asksaveasfilename(
+            parent=self,
+            title=title,
+            initialdir=self.path.parent,
+            initialfile=f"{self.path.stem}-{name}{suffix}",
+            defaultextension=suffix,
+            filetypes=[(suffix[1:].upper(), "*" + suffix)],
+            confirmoverwrite=True,
+        )
+        if path:
+            try:
+                destination = Path(path)
+                export(destination, destination.exists())
+                self.status.configure(text=f"Exported {destination.name}")
+            except Exception as exc:
+                self.error(exc)
+
+    def split_pdf(self, by_starts=False):
+        if not self.doc or self.doc.count < 2:
+            return
+        title = "Split PDF into several files"
+        try:
+            if by_starts:
+                value = simpledialog.askstring(
+                    title,
+                    "Enter the pages that should start new files, for example 3,7,10.",
+                    initialvalue="2",
+                    parent=self,
+                )
+                if value is None:
+                    return
+                starts = tuple(int(part.strip()) for part in value.split(","))
+                groups = split_groups(self.doc.count, starts=starts)
+            else:
+                count = simpledialog.askinteger(
+                    title,
+                    "Pages per file:",
+                    minvalue=1,
+                    maxvalue=self.doc.count - 1,
+                    initialvalue=1,
+                    parent=self,
+                )
+                if count is None:
+                    return
+                groups = split_groups(self.doc.count, every=count)
+        except ValueError as exc:
+            self.error(exc)
+            return
+        self.publish_file(
+            title,
+            ".zip",
+            "split",
+            lambda path, overwrite: export_split(self.doc, groups, path, overwrite),
+        )
+
+    def contact_sheet(self):
+        if not self.doc:
+            return
+        title = "Export page contact sheet"
+        default = f"1-{min(40, self.doc.count)}"
+        indices = self.ask_pages(
+            title, self.doc, default, "Choose up to 40 pages for thumbnail previews."
+        )
+        if indices is None:
+            return
+        columns = simpledialog.askinteger(
+            title,
+            "Thumbnail columns:",
+            minvalue=2,
+            maxvalue=4,
+            initialvalue=3,
+            parent=self,
+        )
+        if columns is not None:
+            self.publish_file(
+                title,
+                ".pdf",
+                "contact-sheet",
+                lambda path, overwrite: export_contact_sheet(
+                    self.doc, indices, columns, path, overwrite
+                ),
+            )
+
+    def advanced_images(self, kind):
+        if not self.doc:
+            return
+        title = f"Export {kind.upper()} archive"
+        indices = self.ask_pages(title, self.doc, str(self.page + 1), "Choose up to 20 pages.")
+        if indices is None:
+            return
+        dpi = simpledialog.askinteger(
+            title,
+            "Resolution (72 to 216 DPI, capped at 3,000 pixels per side):",
+            minvalue=72,
+            maxvalue=216,
+            initialvalue=144,
+            parent=self,
+        )
+        if dpi is None:
+            return
+        quality = 90
+        if kind == "jpg":
+            quality = simpledialog.askinteger(
+                title, "JPEG quality:", minvalue=40, maxvalue=100, initialvalue=90, parent=self
+            )
+            if quality is None:
+                return
+        gray = messagebox.askyesnocancel(title, "Use grayscale? Choose No for color.", parent=self)
+        if gray is not None:
+            self.publish_file(
+                title,
+                ".zip",
+                f"{kind}-pages",
+                lambda path, overwrite: export_rendered_archive(
+                    self.doc, indices, kind, dpi, gray, quality, path, overwrite
+                ),
+            )
+
+    def save_report(self, kind):
+        if self.doc:
+            self.publish_file(
+                f"Export {kind} report",
+                ".csv",
+                kind,
+                lambda path, overwrite: export_report(self.doc, kind, path, overwrite),
+            )
+
+    def read_page_text(self):
+        if not self.doc:
+            return
+        try:
+            value = self.doc.page_text(self.page)
+            self.show_text_panel(
+                f"Embedded text · page {self.page + 1}", value or "No embedded text on this page."
+            )
+        except Exception as exc:
+            self.error(exc)
+
     def inspect_document(self, links=False):
         if not self.doc:
             return
@@ -1460,6 +1710,9 @@ class Editor(tk.Tk):
         except Exception as exc:
             self.error(exc)
             return
+        self.show_text_panel(title, info)
+
+    def show_text_panel(self, title, info):
         dialog = tk.Toplevel(self)
         dialog.title(title)
         dialog.transient(self)
