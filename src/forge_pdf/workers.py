@@ -6,7 +6,7 @@ import json
 import multiprocessing as mp
 from multiprocessing import shared_memory
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from .document import Document, MAX_BYTES
 
@@ -23,12 +23,18 @@ def _work(connection, memory_name, length, role, params, cancel_event):
             width, height = document.size(params["page"])
             zoom = params["zoom"]
             if params["fit"]:
-                limits = [(params["cw"] - 48) / width, 2]
+                limits = [2]
+                if params["fit"] != "height":
+                    limits.append((params["cw"] - 48) / width)
                 if params["fit"] != "width":
                     limits.append((params["ch"] - 48) / height)
                 zoom = max(0.05, min(limits))
             zoom = min(zoom, 3000 / max(width, height))
             image = document.render(params["page"], zoom)
+            if params.get("tone") == "gray":
+                image = ImageOps.grayscale(image).convert("RGB")
+            elif params.get("tone") == "inverted":
+                image = ImageOps.invert(image)
             result = dict(
                 params,
                 width=width,
