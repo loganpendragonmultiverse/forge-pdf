@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 - 2026-11-11
+
+- Create a PDF from pasted text or a UTF-8 file, or insert the generated pages into an open PDF.
+- Create or insert ruled, square grid, or dot grid worksheets with paper and orientation choices.
+- Split a PDF every N pages or at specific start pages, with numbered PDF files in one ZIP.
+- Create printable page contact sheets with labeled thumbnails in two to four columns.
+- Export PNG or JPEG archives with resolution, grayscale, and JPEG quality controls.
+- Read the current page's embedded text in a selectable window.
+- Export CSV reports for page sizes and rotation, embedded links, notes, and bookmarks.
+
 ## 1.5.0 - 2026-11-11
 
 - Organize Page actions into eight short submenus and keep all existing commands available.

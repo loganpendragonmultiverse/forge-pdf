@@ -8,7 +8,7 @@ or upload. White out a line, add a replacement, remove a footer, or put pages in
 
 ## Quick start
 
-1. Download **Forge-PDF-1.5.0-Windows.zip** from the release page and extract it once.
+1. Download **Forge-PDF-1.6.0-Windows.zip** from the release page and extract it once.
 2. Open the **Forge PDF** folder and double-click **Forge PDF.exe**. No installation or Python setup is needed.
 3. Open a PDF, select **Whiteout**, and drag over the area you want to cover.
 4. Use **Add text** to place new text, then **Save a copy** under a different name.
@@ -21,6 +21,15 @@ is the ready-to-run application.
 and images remain in the PDF and can be extracted. Do not use them to remove secrets.**
 
 ## Features
+
+- Create PDFs from pasted text or UTF-8 text files with automatic wrapping and pagination.
+  Insert those pages into an existing PDF when needed.
+- Create or insert ruled, square grid, or dot grid worksheets in standard paper sizes.
+- Split a document into PDFs every N pages or at selected start pages, in a single ZIP.
+- Make printable contact sheets with numbered thumbnails and a choice of columns.
+- Export PNG or JPEG ZIPs with resolution, grayscale, and JPEG quality controls.
+- Read selectable embedded page text and export CSV reports for page sizes, links,
+  notes, and bookmarks.
 
 - Create blank Letter, A4, Legal, or A5 PDFs in either orientation. Turn PNG/JPEG
   files into a new PDF or insert them into an open document.
@@ -158,6 +167,13 @@ python -m venv .venv
 install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build commands.
 
 ## Limitations
+
+- Text import accepts UTF-8 plain text up to 200,000 characters and 100 generated pages.
+  It uses Letter paper and the current local font selection. Embedded page text can
+  be incomplete in scans and PDFs with unusual text encodings.
+- Split ZIPs hold up to 100 PDFs. Contact sheets hold up to 40 page thumbnails and
+  image archives up to 20 pages. Image output is capped at 3,000 pixels per side.
+- Reports may contain private text and links from the open PDF. Review before sharing.
 
 - Import up to 20 PNG/JPEG files at a time. Images fit on Letter pages and are
   downsampled when larger than the 2-pixel-per-point fit. Range duplication is

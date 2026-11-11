@@ -104,3 +104,9 @@ Check the nested toolbar and sidebar menus, including access with the sidebar hi
 Exercise page order and duplicate undo, rotated crop and reset, protected image sources,
 drawing appearance and retained annotations, clipboard text, and compressed copy fidelity.
 Check that preview colors and exports leave source bytes and edit history alone.
+
+## 1.6.0 acceptance
+
+Verify wrapping, pagination, UTF-8 source and alias protection, worksheet rendering,
+split order and retained internal links, contact sheet labels, grayscale and DPI,
+and safe CSV cells. Exercise the batch publishing menu on the synthetic practice PDF.
