@@ -12,14 +12,16 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Callable
+from zipfile import ZipFile, ZIP_DEFLATED
 
 import pypdfium2 as pdfium
 from PIL import ImageDraw
 from pypdf import PdfReader, PdfWriter, Transformation
 from pypdf.annotations import Highlight as PdfHighlight, Text as TextNote
 from pypdf.constants import PageLabelStyle
-from pypdf.generic import ArrayObject, FloatObject, NameObject, TextStringObject
+from pypdf.generic import ArrayObject, FloatObject, NameObject, RectangleObject, TextStringObject
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.lib.colors import HexColor
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 
@@ -28,6 +30,13 @@ from .enhancements import serialized_pdfium, stamp_image, text_font, fit_stamp_s
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PAGES = 500
 HISTORY_BYTES = 100 * 1024 * 1024
+PAGE_SIZES = {
+    "Letter": (612, 792),
+    "A4": (595.28, 841.89),
+    "Legal": (612, 1008),
+    "A5": (419.53, 595.28),
+}
+DRAW_TOOLS = ("rectangle", "filled rectangle", "ellipse", "filled ellipse", "line", "arrow")
 
 
 def read_pdf(data: bytes) -> PdfReader:
@@ -51,6 +60,8 @@ def parse_page_ranges(selection: str, page_count: int) -> list[int]:
     """Return zero-based indices in the user's explicit order; reject duplicates."""
     indices: list[int] = []
     seen: set[int] = set()
+    if len(selection) > 8192:
+        raise ValueError("The page selection is too long.")
     for part in selection.split(","):
         match = re.fullmatch(r"\s*([0-9]+)(?:\s*-\s*([0-9]+))?\s*", part)
         if not match:
@@ -64,6 +75,24 @@ def parse_page_ranges(selection: str, page_count: int) -> list[int]:
             seen.add(number)
             indices.append(number - 1)
     return indices
+
+
+def visible_page(page):
+    left, bottom = float(page.cropbox.left), float(page.cropbox.bottom)
+    right, top = float(page.cropbox.right), float(page.cropbox.top)
+    rotation = page.rotation % 360
+    width, height = right - left, top - bottom
+    if rotation in (90, 270):
+        width, height = height, width
+    # Map visible-page overlay coordinates back into the original PDF space.
+    # Existing content, link rectangles, crop boxes and rotation stay untouched.
+    matrices = {
+        0: (1, 0, 0, 1, left, bottom),
+        90: (0, 1, -1, 0, right, bottom),
+        180: (-1, 0, 0, -1, right, top),
+        270: (0, -1, 1, 0, left, top),
+    }
+    return width, height, Transformation(matrices[rotation])
 
 
 class Document:
@@ -80,6 +109,59 @@ class Document:
             self.source_identities.add((stat.st_dev, stat.st_ino))
         self.undo_stack: list[bytes] = []
         self.redo_stack: list[bytes] = []
+
+    @classmethod
+    def blank(cls, count: int, paper: str, landscape: bool = False) -> Document:
+        if type(count) is not int or not 1 <= count <= MAX_PAGES or paper not in PAGE_SIZES:
+            raise ValueError("Choose a paper size and 1 to 500 pages.")
+        dimensions = PAGE_SIZES[paper]
+        width, height = dimensions[::-1] if landscape else dimensions
+        writer = PdfWriter()
+        for _ in range(count):
+            writer.add_blank_page(width, height)
+        document = cls(serialize(writer))
+        document.saved = b""
+        return document
+
+    @classmethod
+    def from_images(cls, paths: list[Path]) -> Document:
+        if not 1 <= len(paths) <= 20:
+            raise ValueError("Choose 1 to 20 PNG or JPEG files.")
+        writer = PdfWriter()
+        sources = set()
+        identities = set()
+        total_bytes = 0
+        for path in paths:
+            path = path.resolve()
+            info = path.stat()
+            sources.add(path)
+            identities.add((info.st_dev, info.st_ino))
+            image = stamp_image(path, orient=True)
+            dimensions = PAGE_SIZES["Letter"]
+            width, height = dimensions[::-1] if image.width > image.height else dimensions
+            image.thumbnail((round(width * 2), round(height * 2)))
+            stream = io.BytesIO()
+            canvas = Canvas(stream, pagesize=(width, height))
+            draw_width, draw_height = fit_stamp_size(image.size, width - 36, height - 36)
+            canvas.drawImage(
+                ImageReader(image),
+                (width - draw_width) / 2,
+                (height - draw_height) / 2,
+                draw_width,
+                draw_height,
+                mask="auto",
+            )
+            canvas.save()
+            image.close()
+            total_bytes += stream.tell()
+            if total_bytes > MAX_BYTES:
+                raise ValueError("The generated pages exceed 50 MB. Select fewer images.")
+            writer.add_page(PdfReader(stream).pages[0])
+        document = cls(serialize(writer))
+        document.saved = b""
+        document.sources = sources
+        document.source_identities = identities
+        return document
 
     @classmethod
     def open(cls, path: Path, password: str | None = None) -> Document:
@@ -186,30 +268,115 @@ class Document:
         self.commit(writer)
 
     def delete(self, index: int) -> None:
-        if self.count == 1:
+        self.delete_pages([index])
+
+    def delete_pages(self, indices: list[int]) -> None:
+        self.validate_pages(indices)
+        if len(indices) == self.count:
             raise ValueError("Keep at least one page in the document.")
         writer = self.writer()
-        del writer.pages[index]
+        for index in sorted(indices, reverse=True):
+            writer.remove_page(index)
+        self.commit(writer)
+
+    def reorder_pages(self, order: list[int]) -> None:
+        self.validate_pages(order)
+        if len(order) != self.count:
+            raise ValueError("Include every page exactly once when reordering.")
+        current = list(range(self.count))
+        if order == current:
+            return
+        writer = self.writer()
+        for destination, index in enumerate(order):
+            position = current.index(index)
+            if position != destination:
+                page = writer.pages[position]
+                del writer.pages[position]
+                writer.insert_page(page, destination)
+                current.insert(destination, current.pop(position))
         self.commit(writer)
 
     def move(self, index: int, destination: int) -> None:
         if not 0 <= destination < self.count:
             return
+        self.validate_pages([index])
+        order = list(range(self.count))
+        order.insert(destination, order.pop(index))
+        self.reorder_pages(order)
+
+    def duplicate_pages(self, indices: list[int], position: int) -> None:
+        self.validate_pages(indices)
+        if (
+            type(position) is not int
+            or not 0 <= position <= self.count
+            or self.count + len(indices) > MAX_PAGES
+        ):
+            raise ValueError(
+                "Choose an insertion point and keep the document at 500 pages or fewer."
+            )
+        reader = read_pdf(self.data)
+        if reader.trailer["/Root"].get("/AcroForm") is not None:
+            raise ValueError(
+                "Range duplication is unavailable for documents with interactive forms."
+            )
         writer = self.writer()
-        page = writer.pages[index]
-        del writer.pages[index]
-        writer.insert_page(page, destination)
+        writer.merge(position, reader, pages=indices, import_outline=False)
+        self.commit(writer)
+
+    def crop_pages(
+        self,
+        indices: list[int],
+        bounds: tuple[float, float, float, float],
+        *,
+        margins: bool = False,
+    ) -> None:
+        self.validate_pages(indices)
+        if len(bounds) != 4 or not all(math.isfinite(value) and value >= 0 for value in bounds):
+            raise ValueError("Choose finite, nonnegative crop coordinates.")
+        writer = self.writer()
+        for index in indices:
+            page = writer.pages[index]
+            if page.user_unit != 1:
+                raise ValueError(f"Page {index + 1} uses a custom PDF unit and cannot be cropped.")
+            width, height, transform = visible_page(page)
+            left, top, right, bottom = bounds
+            if margins:
+                right, bottom = width - right, height - bottom
+            if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+                raise ValueError(f"The crop must leave visible content on page {index + 1}.")
+            a, b = (
+                transform.apply_on((left, height - top)),
+                transform.apply_on((right, height - bottom)),
+            )
+            page.cropbox = RectangleObject(
+                (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+            )
+        self.commit(writer)
+
+    def reset_crops(self, indices: list[int]) -> None:
+        self.validate_pages(indices)
+        writer = self.writer()
+        for index in indices:
+            page = writer.pages[index]
+            page.cropbox = RectangleObject(page.mediabox)
         self.commit(writer)
 
     def append(self, path: Path) -> None:
         other = Document.open(path)
-        if self.count + other.count > MAX_PAGES:
+        self.insert_pages(other, list(range(other.count)), self.count)
+
+    def insert_pages(self, source: Document, indices: list[int], position: int) -> None:
+        source.validate_pages(indices)
+        if type(position) is not int or not 0 <= position <= self.count:
+            raise ValueError("Choose where to insert the pages.")
+        if self.count + len(indices) > MAX_PAGES:
             raise ValueError("The combined document would exceed 500 pages.")
         writer = self.writer()
-        writer.append(PdfReader(io.BytesIO(other.data)), import_outline=False)
+        writer.merge(position, read_pdf(source.data), pages=indices, import_outline=False)
         self.commit(writer)
-        self.sources.add(path.resolve())
-        self.source_identities.update(other.source_identities)
+        self.sources.update(source.sources)
+        self.source_identities.update(source.source_identities)
+        self.opened_encrypted |= source.opened_encrypted
 
     @serialized_pdfium
     def render(self, index: int, scale: float = 1.0):
@@ -287,23 +454,114 @@ class Document:
     def export_page(self, index: int, path: Path, overwrite: bool = False) -> None:
         self.export_pages([index], path, overwrite=overwrite)
 
-    def export_pages(self, indices: list[int], path: Path, overwrite: bool = False) -> None:
-        count = self.count
+    def validate_pages(self, indices: list[int]) -> None:
         if not indices or any(
-            not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < count
-            for index in indices
+            type(index) is not int or not 0 <= index < self.count for index in indices
         ):
             raise ValueError("Select at least one valid page.")
         if len(set(indices)) != len(indices):
             raise ValueError("Select each page only once.")
+
+    @staticmethod
+    def subset_pdf(reader: PdfReader, indices: list[int]) -> bytes:
         writer = PdfWriter()
-        reader = PdfReader(io.BytesIO(self.data))
+        writer.append(reader, pages=indices, import_outline=False)
+        output = serialize(writer)
+        read_pdf(output)
+        return output
+
+    def export_pages(self, indices: list[int], path: Path, overwrite: bool = False) -> None:
+        self.validate_pages(indices)
+        path = self.export_destination(path, ".pdf")
+        write_copy_bytes(path, self.subset_pdf(read_pdf(self.data), indices), overwrite)
+
+    def export_destination(self, path: Path, suffix: str) -> Path:
+        path = path.resolve()
+        if path.suffix.lower() != suffix:
+            raise ValueError(f"Use the {suffix} file extension.")
+        self.check_destination(path)
+        return path
+
+    def export_text(self, indices: list[int], path: Path, overwrite: bool = False) -> None:
+        self.validate_pages(indices)
+        path = self.export_destination(path, ".txt")
+        reader = read_pdf(self.data)
+        output = io.BytesIO()
         for index in indices:
-            writer.add_page(reader.pages[index])
-        extracted = Document(serialize(writer))
-        extracted.sources = self.sources.copy()
-        extracted.source_identities = self.source_identities.copy()
-        extracted.save_copy(path, overwrite=overwrite)
+            text = reader.pages[index].extract_text() or ""
+            output.write(f"--- Page {index + 1} ---\n{text.rstrip()}\n\n".encode("utf-8"))
+            if output.tell() > 20 * 1024 * 1024:
+                raise ValueError("Text export exceeds 20 MB. Select fewer pages.")
+        write_copy_bytes(path, output.getvalue(), overwrite)
+
+    def page_text(self, index: int) -> str:
+        self.validate_pages([index])
+        text = read_pdf(self.data).pages[index].extract_text() or ""
+        if len(text) > 2_000_000:
+            raise ValueError("The extracted text exceeds the clipboard limit.")
+        return text
+
+    def external_links(self) -> list[tuple[int, str]]:
+        links = []
+        for index, page in enumerate(read_pdf(self.data).pages, 1):
+            for ref in page.get("/Annots") or ():
+                link = ref.get_object()
+                action = link.get("/A")
+                if link.get("/Subtype") == "/Link" and action is not None:
+                    action = action.get_object()
+                    if action.get("/S") == "/URI" and action.get("/URI"):
+                        links.append((index, str(action["/URI"])[:2048]))
+                        if len(links) >= 1000:
+                            return links
+        return links
+
+    def export_page_image(self, index: int, path: Path, kind: str, overwrite: bool = False) -> None:
+        self.validate_pages([index])
+        if kind not in ("png", "jpg"):
+            raise ValueError("Choose PNG or JPEG.")
+        path = self.export_destination(path, "." + kind)
+        write_copy_bytes(path, self.page_image_bytes(index, kind), overwrite)
+
+    def page_image_bytes(self, index: int, kind: str) -> bytes:
+        with self.render(index, 2) as image, io.BytesIO() as output:
+            image.save(output, format="PNG" if kind == "png" else "JPEG", quality=90)
+            return output.getvalue()
+
+    def export_compressed(self, path: Path, overwrite: bool = False) -> tuple[int, int]:
+        path = self.export_destination(path, ".pdf")
+        writer = self.writer()
+        for page in writer.pages:
+            page.compress_content_streams()
+        writer.compress_identical_objects(remove_duplicates=True, remove_unreferenced=True)
+        candidate = serialize(writer)
+        output = self.data
+        if len(candidate) < len(output):
+            read_pdf(candidate)
+            output = candidate
+        write_copy_bytes(path, output, overwrite)
+        return len(self.data), len(output)
+
+    def export_page_archive(
+        self, indices: list[int], path: Path, kind: str, overwrite: bool = False
+    ) -> None:
+        self.validate_pages(indices)
+        if len(indices) > 20:
+            raise ValueError("Select up to 20 pages per archive.")
+        if kind not in ("pdf", "png", "jpg"):
+            raise ValueError("Choose PDF, PNG or JPEG.")
+        path = self.export_destination(path, ".zip")
+        reader = read_pdf(self.data)
+        output = io.BytesIO()
+        with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
+            for number, index in enumerate(indices, 1):
+                if kind == "pdf":
+                    data = self.subset_pdf(reader, [index])
+                else:
+                    data = self.page_image_bytes(index, kind)
+                archive.writestr(f"{number:03d}-page-{index + 1}.{kind}", data)
+                if output.tell() > 100 * 1024 * 1024:
+                    raise ValueError("The archive exceeds 100 MB. Select fewer pages.")
+        write_copy_bytes(path, output.getvalue(), overwrite)
 
     def export_raster_redacted(
         self,
@@ -628,23 +886,12 @@ class Document:
         size: int = 16,
         font_path: Path | None = None,
         image_path: Path | bytes | None = None,
+        color: str | None = None,
+        stroke: float = 2,
     ):
-        writer = self.mark_writer(index)
+        writer = self.writer() if kind in DRAW_TOOLS else self.mark_writer(index)
         page = writer.pages[index]
-        left, bottom = float(page.cropbox.left), float(page.cropbox.bottom)
-        right, top = float(page.cropbox.right), float(page.cropbox.top)
-        rotation = page.rotation % 360
-        width, height = right - left, top - bottom
-        if rotation in (90, 270):
-            width, height = height, width
-        # Map visible-page overlay coordinates back into the original PDF space.
-        # Existing content, link rectangles, crop boxes and rotation stay untouched.
-        matrices = {
-            0: (1, 0, 0, 1, left, bottom),
-            90: (0, 1, -1, 0, right, bottom),
-            180: (-1, 0, 0, -1, right, top),
-            270: (0, -1, 1, 0, left, top),
-        }
+        width, height, transform = visible_page(page)
         stream = io.BytesIO()
         canvas = Canvas(stream, pagesize=(width, height))
         x, y, x2, y2 = box
@@ -666,7 +913,7 @@ class Document:
                 raise ValueError(
                     "The text does not fit here. Use a smaller size or click farther left/up."
                 )
-            canvas.setFillColorRGB(0.08, 0.13, 0.20)
+            canvas.setFillColor(HexColor(color or "#142133"))
             canvas.setFont(font, size)
             for n, line in enumerate(lines):
                 canvas.drawString(x, height - y - size - n * size * 1.25, line)
@@ -693,13 +940,86 @@ class Document:
             if kind == "whiteout":
                 canvas.setFillColorRGB(1, 1, 1)
             else:
-                canvas.setFillColorRGB(1, 0.80, 0.12)
+                canvas.setFillColor(HexColor(color or "#ffcc1f"))
                 canvas.setFillAlpha(0.32)
             canvas.rect(x, height - y2, x2 - x, y2 - y, fill=1, stroke=0)
+        elif kind in DRAW_TOOLS:
+            if not 0.5 <= stroke <= 12:
+                raise ValueError("Choose a line thickness from 0.5 to 12 points.")
+            paint = HexColor(color or "#245bb2")
+            canvas.setStrokeColor(paint)
+            canvas.setFillColor(paint)
+            canvas.setLineWidth(stroke)
+            if kind in ("line", "arrow"):
+                if x == x2 and y == y2:
+                    return
+                canvas.line(x, height - y, x2, height - y2)
+                if kind == "arrow":
+                    angle = math.atan2(y - y2, x2 - x)
+                    length = min(max(6, 4 * stroke), math.hypot(x2 - x, y2 - y) / 2)
+                    for offset in (-math.pi / 6, math.pi / 6):
+                        canvas.line(
+                            x2,
+                            height - y2,
+                            x2 - length * math.cos(angle + offset),
+                            height - y2 - length * math.sin(angle + offset),
+                        )
+            else:
+                left, right = sorted((x, x2))
+                bottom, top = sorted((height - y, height - y2))
+                if left == right or bottom == top:
+                    return
+                fill = int(kind.startswith("filled"))
+                if kind.endswith("ellipse"):
+                    canvas.ellipse(left, bottom, right, top, stroke=1, fill=fill)
+                else:
+                    canvas.rect(left, bottom, right - left, top - bottom, stroke=1, fill=fill)
         else:
             raise ValueError("Unknown editing tool.")
         canvas.save()
-        page.merge_transformed_page(PdfReader(stream).pages[0], Transformation(matrices[rotation]))
+        page.merge_transformed_page(PdfReader(stream).pages[0], transform)
+        self.commit(writer)
+
+    def mark_pages(
+        self,
+        indices: list[int],
+        kind: str,
+        text: str = "",
+        size: int = 16,
+        start: int = 1,
+        font_path: Path | None = None,
+    ) -> None:
+        self.validate_pages(indices)
+        if kind not in ("header", "footer", "watermark", "numbers"):
+            raise ValueError("Choose a header, footer, watermark or page numbers.")
+        if type(size) is not int or not 8 <= size <= 72:
+            raise ValueError("Choose a text size between 8 and 72 points.")
+        if type(start) is not int or not 1 <= start <= 100000:
+            raise ValueError("Choose a starting number between 1 and 100000.")
+        if kind != "numbers" and (not text.strip() or len(text) > 200 or not text.isprintable()):
+            raise ValueError("Enter one line containing 1 to 200 printable characters.")
+        font = text_font("0123456789" if kind == "numbers" else text, font_path)
+        writer = self.writer()
+        for number, index in enumerate(indices, start):
+            page = writer.pages[index]
+            width, height, transform = visible_page(page)
+            label = str(number) if kind == "numbers" else text
+            if stringWidth(label, font, size) + 24 > width or size + 24 > height:
+                raise ValueError(f"The mark does not fit on page {index + 1}. Use smaller text.")
+            stream = io.BytesIO()
+            canvas = Canvas(stream, pagesize=(width, height))
+            canvas.setFont(font, size)
+            if kind == "watermark":
+                canvas.setFillColorRGB(0.18, 0.24, 0.32)
+                canvas.setFillAlpha(0.23)
+                y = (height - size) / 2
+            elif kind == "header":
+                y = height - size - 12
+            else:
+                y = 12
+            canvas.drawCentredString(width / 2, y, label)
+            canvas.save()
+            page.merge_transformed_page(PdfReader(stream).pages[0], transform)
         self.commit(writer)
 
     def search(
@@ -851,6 +1171,9 @@ class Document:
         writer = self.writer()
         writer.add_metadata(values)
         self.commit(writer)
+
+    def clear_common_metadata(self) -> None:
+        self.set_metadata(dict.fromkeys(("/Title", "/Author", "/Subject", "/Keywords"), ""))
 
     def add_bookmark(self, title: str, index: int) -> None:
         if not isinstance(title, str) or not title.strip() or len(title) > 200:

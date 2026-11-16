@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import tkinter
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -139,7 +140,10 @@ def main():
     parser.add_argument("--ocr-bundle", type=Path, help="Verified app-scoped OCR binary folder")
     args = parser.parse_args()
     name = "Forge PDF Preview" if args.preview else "Forge PDF"
-    archive_name = "Forge-PDF-Preview-Windows" if args.preview else "Forge-PDF-1.3.0-Windows"
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
+    ]
+    archive_name = "Forge-PDF-Preview-Windows" if args.preview else f"Forge-PDF-{version}-Windows"
     subprocess.run(
         [
             sys.executable,

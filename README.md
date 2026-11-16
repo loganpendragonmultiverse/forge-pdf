@@ -8,7 +8,7 @@ or upload. White out a line, add a replacement, remove a footer, or put pages in
 
 ## Quick start
 
-1. Download **Forge-PDF-1.3.0-Windows.zip** from the release page and extract it once.
+1. Download **Forge-PDF-1.6.0-Windows.zip** from the release page and extract it once.
 2. Open the **Forge PDF** folder and double-click **Forge PDF.exe**. No installation or Python setup is needed.
 3. Open a PDF, select **Whiteout**, and drag over the area you want to cover.
 4. Use **Add text** to place new text, then **Save a copy** under a different name.
@@ -21,6 +21,39 @@ is the ready-to-run application.
 and images remain in the PDF and can be extracted. Do not use them to remove secrets.**
 
 ## Features
+
+- Create PDFs from pasted text or UTF-8 text files with automatic wrapping and pagination.
+  Insert those pages into an existing PDF when needed.
+- Create or insert ruled, square grid, or dot grid worksheets in standard paper sizes.
+- Split a document into PDFs every N pages or at selected start pages, in a single ZIP.
+- Make printable contact sheets with numbered thumbnails and a choice of columns.
+- Export PNG or JPEG ZIPs with resolution, grayscale, and JPEG quality controls.
+- Read selectable embedded page text and export CSV reports for page sizes, links,
+  notes, and bookmarks.
+
+- Create blank Letter, A4, Legal, or A5 PDFs in either orientation. Turn PNG/JPEG
+  files into a new PDF or insert them into an open document.
+- Reverse page order, put odd or even pages first, move selected pages as a group,
+  or duplicate selected pages in one Undo step.
+- Crop by dragging or enter exact margins for a page range. Reset a crop to the
+  full page. Cropped content stays in the PDF.
+- Draw rectangles, ellipses, filled shapes, lines and arrows. Choose colors for
+  text, painted highlights and shapes, and set line thickness.
+- Save a single page as PNG or JPEG, copy its embedded text, or save a compressed
+  PDF copy using lossless stream compression and duplicate-object removal.
+- Fit height, switch to full screen, or preview in grayscale or inverted colors.
+  Preview colors affect the screen only.
+- Review document information and list embedded URI links without opening them.
+  Clear title, author, subject and keywords from the standard metadata editor.
+
+- Reorder every page in one operation, delete selected ranges, or insert selected pages
+  from another PDF, including password-protected inputs. Rotate ranges left, right, or 180°.
+- Add headers, footers, translucent watermarks, or sequential page numbers to selected pages.
+  These become page content and leave existing annotations in place. Use Undo to reverse the batch.
+- Split selected pages into separate PDFs in a ZIP, export PNG or JPEG pages to a ZIP, or
+  save embedded text as UTF-8. Archives accept up to 20 pages. Image output renders the
+  visible page at up to 2× with a 3,000-pixel long-edge cap. Text export does not run OCR.
+- Fit the page to the window width or jump to the first or last page from Page actions.
 
 - Find literal document text across pages with case and whole-word options, a result list,
   and next/previous matches. Use the bundled offline English OCR engine to export a searchable
@@ -39,24 +72,24 @@ and images remain in the PDF and can be extracted. Do not use them to remove sec
   page ranges as one Undoable edit.
 - Use **Edit form fields** to choose supported fields from a list and edit them with
   text, option, or checkbox controls.
-- Use **Page actions → Add native PDF highlight** to drag a real highlight annotation;
+- Use **Page actions → Forms and annotations → Notes and highlights → Add native PDF highlight** to drag a real highlight annotation;
   review or delete native highlights on the current page. The toolbar Highlight tool
   remains a painted visual mark. Later page-content edits may flatten native annotations.
 - Add a numbered or prefixed page-label range when the source has no custom labels;
   the pages panel displays the resulting labels.
-- Save an AES-256 password-encrypted PDF copy through **Page actions → Save encrypted copy**.
-- Use **Page actions → OCR searchable image copy** in the Windows app with the
+- Save an AES-256 password-encrypted PDF copy through **Page actions → Export and OCR → PDF copies → Save encrypted copy**.
+- Use **Page actions → Export and OCR → Offline OCR → OCR searchable image copy** in the Windows app with the
   app-scoped English OCR bundle. It processes up to 20 pages locally and adds an
   invisible text layer to a new image PDF. This source stage processes pages in
   a separate worker with progress and Cancel; installed language files can be selected.
   Review recognition before sharing. The app-scoped engine and its notices are included
   in the Windows ZIP; no document is uploaded.
-- Use **Page actions → OCR text layer on scanned pages** for a separate copy that
+- Use **Page actions → Export and OCR → Offline OCR → OCR text layer on scanned pages** for a separate copy that
   retains original page graphics, links, bookmarks and metadata. This is limited
   to 20 simple unrotated, uncropped image pages with no existing text, forms or
   signatures. It adds invisible searchable text, stays offline, and leaves the
   open source unchanged. Check placement and recognition before sharing.
-- Use **Page actions → Rasterized redacted export** to drag a blacked-out area into a
+- Use **Page actions → Export and OCR → PDF copies → Rasterized redacted export** to drag a blacked-out area into a
   new image-only PDF. The export rebuilds every page from rendered pixels and discards
   source text, forms, links, annotations, bookmarks, attachments and metadata.
 
@@ -112,9 +145,11 @@ do not enable it for other sensitive documents.
 There is no default autosave, account connection or network upload.
 
 For a smaller window, use **Pages** to hide the sidebar. **Page actions** retains its commands.
+Its eight groups keep creation, page organization, cropping, drawing, annotation,
+export, navigation, and document commands together.
 Use **Add text → Local font** and **Check glyphs** before placing new text. Choose an image
 under **Image stamp**, then drag its placement rectangle and review the preview before release.
-**Page actions → Export checks** is an object summary with review reminders, not a fidelity
+**Page actions → Export and OCR → PDF copies → Export checks** is an object summary with review reminders, not a fidelity
 certificate. Continue reviewing exported links, forms, annotations and page ordering.
 
 ## Run from source
@@ -132,6 +167,21 @@ python -m venv .venv
 install anything automatically. See [DEVELOPMENT.md](DEVELOPMENT.md) for build commands.
 
 ## Limitations
+
+- Text import accepts UTF-8 plain text up to 200,000 characters and 100 generated pages.
+  It uses Letter paper and the current local font selection. Embedded page text can
+  be incomplete in scans and PDFs with unusual text encodings.
+- Split ZIPs hold up to 100 PDFs. Contact sheets hold up to 40 page thumbnails and
+  image archives up to 20 pages. Image output is capped at 3,000 pixels per side.
+- Reports may contain private text and links from the open PDF. Review before sharing.
+
+- Import up to 20 PNG/JPEG files at a time. Images fit on Letter pages and are
+  downsampled when larger than the 2-pixel-per-point fit. Range duplication is
+  disabled in interactive form PDFs.
+- Crop hides content outside the visible area. Clearing common metadata affects
+  only the four standard fields listed in the dialog.
+- A compressed copy can be the same size if the current PDF is already smaller.
+  Compression preserves image quality and leaves document content in place.
 
 - Adds content over existing pages; does not rewrite existing paragraphs,
   preserve vector/text content during redacted export, validate signatures, or support every AcroForm control. Form filling
@@ -188,7 +238,7 @@ non-sensitive PDFs through [GitHub Issues](https://github.com/loganpendragonmult
 
 ## 1.1.0 - 2026-10-16
 
-Use **More page actions → Export page ranges** for one-based selections such as `1,3-5`.
+Use **Page actions → Export and OCR → PDF copies → Export page ranges** for one-based selections such as `1,3-5`.
 Ranges ascend within each term; terms retain their entered order (`3,1-2` exports pages 3, 1,
 then 2). Duplicate, malformed, empty, and out-of-range selections are rejected. Review every
 output page in the ordered list; selecting an item previews that source page. Continue to save
