@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.6.0 - 2026-11-11
+
+- Create a PDF from pasted text or a UTF-8 file, or insert the generated pages into an open PDF.
+- Create or insert ruled, square grid, or dot grid worksheets with paper and orientation choices.
+- Split a PDF every N pages or at specific start pages, with numbered PDF files in one ZIP.
+- Create printable page contact sheets with labeled thumbnails in two to four columns.
+- Export PNG or JPEG archives with resolution, grayscale, and JPEG quality controls.
+- Read the current page's embedded text in a selectable window.
+- Export CSV reports for page sizes and rotation, embedded links, notes, and bookmarks.
+
+## 1.5.0 - 2026-11-11
+
+- Organize Page actions into eight short submenus and keep all existing commands available.
+- Create blank PDFs with paper and orientation choices, create PDFs from PNG/JPEG
+  files, and insert image pages into an open document.
+- Reverse page order, group odd or even pages first, move a range, and duplicate
+  selected pages.
+- Crop by dragging, apply exact margins to ranges, and reset to the full page.
+- Draw rectangles and ellipses with outlined or filled styles, lines and arrows.
+  Choose text, highlight and drawing colors and set line thickness.
+- Save the current page as PNG or JPEG, copy its embedded text, and save a lossless
+  compressed PDF copy.
+- Fit height, toggle full screen, and preview in grayscale or inverted colors.
+- Inspect document information and embedded URI links, or clear the four common metadata fields.
+- Stop local recovery snapshots when imported pages came from a password-protected PDF.
+
+## 1.4.0 - 2026-11-09
+
+- Add full-document reordering, range deletion, and ordered page insertion from another PDF.
+  Appending and inserting now prompt for a password when the other PDF requires one.
+- Rotate selected ranges left, right, or 180 degrees.
+- Apply headers, footers, page numbers, and translucent text watermarks in one Undo step.
+- Split selected pages into separate PDFs, export rendered PNG or JPEG pages to a ZIP, and
+  save embedded text to UTF-8.
+- Add Fit width and first/last page navigation.
+- Preserve internal links between retained pages in a subset export, and keep the active
+  page stationary when a move fails.
+- Keep text-control Undo/Redo shortcuts from editing the document, report effective preview
+  zoom when rendering is capped, and derive Windows archive names from the package version.
+
 ## 1.3.0 - 2026-10-28
 
 - Add offline English OCR image-copy and limited source-preserving text-layer exports with progress and cancellation. The Windows ZIP includes a pinned, source-built Tesseract engine and notices.

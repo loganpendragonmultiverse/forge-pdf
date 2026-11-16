@@ -89,3 +89,24 @@ and uploads release assets and checksums. Release acceptance on one Windows 11 x
 device also covered synthetic form controls and the packaged OCR engine. Other
 Windows versions, independent viewer appearance, screen reader output and hostile
 PDF isolation have not been accepted.
+
+## 1.4.0 acceptance
+
+Exercise range rotation, reordering, deletion, and insertion from a password-opened PDF.
+Verify outlines and links to retained pages after reordering and subset export. Test batch
+marks across all crop/rotation cases, and check that a mark which fails to fit any page
+commits nothing. Confirm archive order, UTF-8 page labels, source protection, and retained
+Undo/Redo after exporting. Exercise Page actions with the sidebar hidden.
+
+## 1.5.0 acceptance
+
+Check the nested toolbar and sidebar menus, including access with the sidebar hidden.
+Exercise page order and duplicate undo, rotated crop and reset, protected image sources,
+drawing appearance and retained annotations, clipboard text, and compressed copy fidelity.
+Check that preview colors and exports leave source bytes and edit history alone.
+
+## 1.6.0 acceptance
+
+Verify wrapping, pagination, UTF-8 source and alias protection, worksheet rendering,
+split order and retained internal links, contact sheet labels, grayscale and DPI,
+and safe CSV cells. Exercise the batch publishing menu on the synthetic practice PDF.

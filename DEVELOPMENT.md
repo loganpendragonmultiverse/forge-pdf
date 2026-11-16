@@ -72,3 +72,25 @@ model, PDF config and OCR notices by SHA-256, and refuses extra OCR DLLs.
 Keep the source-build receipt and full component notices with the Windows ZIP.
 The OCR engine never uploads documents. Update its pinned hashes and notice
 inventory together if the engine or language data changes.
+
+## 1.4.0 page tools
+
+Page range mutations commit once. Reordering keeps page references within the cloned
+document. Page-number order follows the entered page range. Batch marks use the visible
+crop/rotation transform and leave annotations separate. Single-page split PDFs and image
+exports use an ordered ZIP with generated filenames and an atomic destination write.
+Archive and text exports leave the active document, saved state and Undo history alone.
+
+## 1.5.0 document tools
+
+The toolbar and sidebar share the same Page actions menu. Crop and vector drawing use
+the visible page transform and one undoable commit. New drawings leave native annotations
+in place. Image import tracks source file identities and applies EXIF orientation. Preview
+colors are applied inside the preview worker and never affect the document or exports.
+
+## 1.6.0 publishing tools
+
+The publishing module lays out text and worksheet PDFs and builds bounded contact
+sheets, split and image archives, and CSV reports. Exports reuse source identity
+checks and atomic publication. Imported text files keep their source identity after
+insertion. CSV reports neutralize formula prefixes before writing cells.

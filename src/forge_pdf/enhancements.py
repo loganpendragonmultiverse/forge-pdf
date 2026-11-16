@@ -12,7 +12,7 @@ import zipfile
 from functools import wraps
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
@@ -66,7 +66,7 @@ def text_font(text: str, path: Path | None) -> str:
     return name
 
 
-def stamp_image(path: Path | bytes):
+def stamp_image(path: Path | bytes, *, orient: bool = False):
     if isinstance(path, bytes):
         data = path
     else:
@@ -82,7 +82,7 @@ def stamp_image(path: Path | bytes):
             if image.width * image.height > 16_000_000:
                 raise ValueError("Image stamps support up to 16 million pixels.")
             image.load()
-            return image.convert("RGBA").copy()
+            return (ImageOps.exif_transpose(image) if orient else image).convert("RGBA")
 
 
 def session_payload(
