@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1 - 2026-11-16
+
+- Update the PDF parser to pypdf 7.0.0 and the renderer to pypdfium2 5.15.0 for upstream parsing and PDFium security fixes.
+
 ## 1.6.0 - 2026-11-11
 
 - Create a PDF from pasted text or a UTF-8 file, or insert the generated pages into an open PDF.
