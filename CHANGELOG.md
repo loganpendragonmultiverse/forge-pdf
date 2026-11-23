@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0 - 2026-11-23
+
+- Add mixed-document offline OCR that keeps existing text pages, skips blank or unsupported vector-only pages, and maps text back onto eligible rotated or cropped scans.
+- Export two-up and four-up sheets and folded booklet sheets with automatic blank padding on Letter, A4, Legal or A5. These rendered print copies contain page images.
+- Export a selected sequence as a multipage color or grayscale TIFF.
+- Split into chapter PDFs at top-level bookmarks and export a page-aligned embedded-text revision comparison.
+- Protect original and imported source paths and file identities in both the OCR dialog and its worker.
+
 ## 1.7.0
 
 - Collate two-pass scans in either back-side order and arrange or restore booklet order.
