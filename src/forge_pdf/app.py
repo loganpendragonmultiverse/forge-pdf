@@ -23,6 +23,7 @@ from .enhancements import (
     RESOURCE_BYTES,
 )
 
+from .production import bookmark_groups, compare_text, export_tiff, print_layout
 from .publishing import (
     WORKSHEETS,
     export_contact_sheet,
@@ -439,6 +440,13 @@ class Editor(tk.Tk):
             (
                 ("Reorder all pages…", self.reorder_ranges),
                 ("Reverse page order", lambda: self.order_pages("reverse")),
+                ("Arrange for two-up booklet printing", lambda: self.order_pages("booklet")),
+                ("Restore reading order from booklet", lambda: self.order_pages("unbooklet")),
+                ("Collate scan: fronts then backs", lambda: self.order_pages("collate")),
+                (
+                    "Collate scan: fronts then reversed backs",
+                    lambda: self.order_pages("collate-reverse"),
+                ),
                 ("Odd pages first", lambda: self.order_pages("odd")),
                 ("Even pages first", lambda: self.order_pages("even")),
                 ("Move page range…", self.move_ranges),
@@ -554,6 +562,19 @@ class Editor(tk.Tk):
         )
         self.menu_group(
             export,
+            "Print and review",
+            (
+                ("Two pages per sheet…", lambda: self.print_copy("two-up")),
+                ("Four pages per sheet…", lambda: self.print_copy("four-up")),
+                ("Folded booklet sheets…", lambda: self.print_copy("booklet")),
+                ("Color multipage TIFF…", lambda: self.tiff_copy(False)),
+                ("Grayscale multipage TIFF…", lambda: self.tiff_copy(True)),
+                ("Split at chapter bookmarks…", self.split_chapters),
+                ("Compare embedded text with another PDF…", self.revision_report),
+            ),
+        )
+        self.menu_group(
+            export,
             "Images and text",
             (
                 ("Save current page as PNG…", lambda: self.export_single("png")),
@@ -569,6 +590,10 @@ class Editor(tk.Tk):
             export,
             "Offline OCR",
             (
+                (
+                    "OCR mixed document (skip searchable pages)…",
+                    lambda: self.export_ocr(True, mixed=True),
+                ),
                 ("OCR searchable image copy…", self.export_ocr),
                 ("OCR text layer on scanned pages…", lambda: self.export_ocr(preserve_pages=True)),
             ),
@@ -1296,7 +1321,9 @@ class Editor(tk.Tk):
             pady=(0, 12)
         )
 
-    def ask_pages(self, title, document, initial, hint="Use one-based pages such as 1,3-5."):
+    def ask_pages(
+        self, title, document, initial, hint="Use pages (1,3-5), all, odd, even, last, or 3-last."
+    ):
         selection = simpledialog.askstring(
             title, f"Pages 1 to {document.count}. {hint}", parent=self, initialvalue=initial
         )
@@ -1319,6 +1346,32 @@ class Editor(tk.Tk):
         if not self.doc:
             return
         pages = list(range(self.doc.count))
+        if kind in {"booklet", "unbooklet"}:
+            if len(pages) % 4:
+                self.error(
+                    ValueError(
+                        "Booklet order requires a multiple of four pages. Add blank pages first."
+                    )
+                )
+                return
+            order = []
+            for sheet in range(len(pages) // 4):
+                left = sheet * 2
+                right = len(pages) - 1 - left
+                order.extend([right, left, left + 1, right - 1])
+            if kind == "unbooklet":
+                order = sorted(pages, key=order.__getitem__)
+            self.apply_page_order(order)
+            return
+        if kind in {"collate", "collate-reverse"}:
+            split = (len(pages) + 1) // 2
+            fronts, backs = pages[:split], pages[split:]
+            if kind == "collate-reverse":
+                backs.reverse()
+            result = pages.copy()
+            result[::2], result[1::2] = fronts, backs
+            self.apply_page_order(result)
+            return
         orders = {
             "reverse": pages[::-1],
             "odd": pages[::2] + pages[1::2],
@@ -1603,6 +1656,81 @@ class Editor(tk.Tk):
             lambda path, overwrite: export_split(self.doc, groups, path, overwrite),
         )
 
+    def split_chapters(self):
+        if not self.doc:
+            return
+        try:
+            groups = bookmark_groups(self.doc)
+        except ValueError as exc:
+            self.error(exc)
+            return
+        self.publish_file(
+            "Export chapters",
+            ".zip",
+            "chapters",
+            lambda path, overwrite: export_split(self.doc, groups, path, overwrite),
+        )
+
+    def print_copy(self, layout):
+        if not self.doc:
+            return
+        title = "Export " + layout + " print sheets"
+        pages = self.ask_pages(
+            title,
+            self.doc,
+            "all",
+            "Choose up to 40 pages. Output is a rendered print copy. Booklets pad to four pages and print double-sided with short-edge flip.",
+        )
+        if pages is None:
+            return
+        paper = simpledialog.askstring(
+            title, "Sheet size: Letter, A4, Legal or A5", initialvalue="Letter", parent=self
+        )
+        if paper is not None:
+            self.publish_file(
+                title,
+                ".pdf",
+                layout,
+                lambda path, overwrite: print_layout(
+                    self.doc, pages, layout, paper.strip(), path, overwrite
+                ),
+            )
+
+    def tiff_copy(self, gray):
+        if not self.doc:
+            return
+        pages = self.ask_pages(
+            "Multipage TIFF", self.doc, "all", "Choose up to 20 pages in output order."
+        )
+        if pages is not None:
+            self.publish_file(
+                "Export multipage TIFF",
+                ".tif",
+                "pages",
+                lambda path, overwrite: export_tiff(self.doc, pages, gray, path, overwrite),
+            )
+
+    def revision_report(self):
+        if not self.doc:
+            return
+        chosen = filedialog.askopenfilename(
+            parent=self, title="Select revision to compare", filetypes=[("PDF documents", "*.pdf")]
+        )
+        if not chosen:
+            return
+        try:
+            revision = self.read_input_pdf(Path(chosen))
+        except Exception as exc:
+            self.error(exc)
+            return
+        if revision is not None:
+            self.publish_file(
+                "Save embedded text comparison",
+                ".txt",
+                "comparison",
+                lambda path, overwrite: compare_text(self.doc, revision, path, overwrite),
+            )
+
     def contact_sheet(self):
         if not self.doc:
             return
@@ -1817,7 +1945,7 @@ class Editor(tk.Tk):
                 )
             )
 
-    def export_ocr(self, preserve_pages=False):
+    def export_ocr(self, preserve_pages=False, mixed=False):
         if not self.doc:
             return False
         if self.ocr_future is not None and not self.ocr_future.done():
@@ -1853,6 +1981,11 @@ class Editor(tk.Tk):
             "accessibility structure and signatures. It is unencrypted and limited to 20 pages. "
             "Check recognized text before sharing."
         )
+        if mixed:
+            warning = (
+                "Pages with embedded text are kept as-is. Image pages, including cropped or rotated scans, receive a text layer. "
+                "Pages without a direct image are skipped. Forms and signatures are unsupported. The copy is unencrypted. Check recognition and alignment."
+            )
         if not messagebox.askyesno(
             title,
             f"Create a new PDF with offline {language} OCR? The current file stays open. "
@@ -1876,10 +2009,14 @@ class Editor(tk.Tk):
         if not path:
             return False
         try:
+            destination = self.doc.export_destination(Path(path), ".pdf")
             self.ocr_future = self.ocr_executor.submit(
                 self.doc.data,
                 {
-                    "path": path,
+                    "path": str(destination),
+                    "source_paths": [str(p) for p in self.doc.sources],
+                    "source_ids": list(self.doc.source_identities),
+                    "mixed": mixed,
                     "overwrite": Path(path).exists(),
                     "language": language,
                     "preserve_pages": preserve_pages,
@@ -2213,7 +2350,7 @@ class Editor(tk.Tk):
         selection = simpledialog.askstring(
             "Export page ranges",
             f"Pages from 1 to {self.doc.count}, for example 1,3-5.\n"
-            "Pages follow your entered order; duplicates are rejected.",
+            "Use all, odd, even, last, or 3-last. Each page may appear once.",
             parent=self,
             initialvalue=str(self.page + 1),
         )

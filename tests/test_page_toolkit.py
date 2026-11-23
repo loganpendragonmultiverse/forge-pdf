@@ -138,3 +138,27 @@ def test_text_export_is_utf8_in_requested_order_and_refuses_source_hardlink(tmp_
     with pytest.raises(ValueError, match="different name"):
         doc.export_text([0], alias, overwrite=True)
     assert source.read_bytes().startswith(b"%PDF")
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        ("collate", [0, 3, 1, 4, 2]),
+        ("collate-reverse", [0, 4, 1, 3, 2]),
+        ("booklet", [7, 0, 1, 6, 5, 2, 3, 4]),
+        ("unbooklet", [1, 2, 5, 6, 7, 4, 3, 0]),
+    ],
+)
+def test_scan_and_booklet_editor_actions(operation, expected):
+    from types import SimpleNamespace
+    from forge_pdf.app import Editor
+
+    doc = Document(fixture_pdf(len(expected)))
+    original = doc.data
+    editor = SimpleNamespace(doc=doc, apply_page_order=doc.reorder_pages)
+    Editor.order_pages(editor, operation)
+    assert all(
+        f"Original page {page + 1}" in text for page, text in zip(expected, texts(doc), strict=True)
+    )
+    doc.undo()
+    assert doc.data == original

@@ -110,3 +110,7 @@ Check that preview colors and exports leave source bytes and edit history alone.
 Verify wrapping, pagination, UTF-8 source and alias protection, worksheet rendering,
 split order and retained internal links, contact sheet labels, grayscale and DPI,
 and safe CSV cells. Exercise the batch publishing menu on the synthetic practice PDF.
+
+## 1.8.0 print, review and mixed OCR
+
+Check odd booklet padding, TIFF frame order, chapter boundaries, revision inputs, mixed OCR skipping, crop alignment and rejection of original or aliased OCR destinations. Reopen generated print outputs with an independent reader.
