@@ -439,6 +439,13 @@ class Editor(tk.Tk):
             (
                 ("Reorder all pages…", self.reorder_ranges),
                 ("Reverse page order", lambda: self.order_pages("reverse")),
+                ("Arrange for two-up booklet printing", lambda: self.order_pages("booklet")),
+                ("Restore reading order from booklet", lambda: self.order_pages("unbooklet")),
+                ("Collate scan: fronts then backs", lambda: self.order_pages("collate")),
+                (
+                    "Collate scan: fronts then reversed backs",
+                    lambda: self.order_pages("collate-reverse"),
+                ),
                 ("Odd pages first", lambda: self.order_pages("odd")),
                 ("Even pages first", lambda: self.order_pages("even")),
                 ("Move page range…", self.move_ranges),
@@ -1296,7 +1303,9 @@ class Editor(tk.Tk):
             pady=(0, 12)
         )
 
-    def ask_pages(self, title, document, initial, hint="Use one-based pages such as 1,3-5."):
+    def ask_pages(
+        self, title, document, initial, hint="Use pages (1,3-5), all, odd, even, last, or 3-last."
+    ):
         selection = simpledialog.askstring(
             title, f"Pages 1 to {document.count}. {hint}", parent=self, initialvalue=initial
         )
@@ -1319,6 +1328,32 @@ class Editor(tk.Tk):
         if not self.doc:
             return
         pages = list(range(self.doc.count))
+        if kind in {"booklet", "unbooklet"}:
+            if len(pages) % 4:
+                self.error(
+                    ValueError(
+                        "Booklet order requires a multiple of four pages. Add blank pages first."
+                    )
+                )
+                return
+            order = []
+            for sheet in range(len(pages) // 4):
+                left = sheet * 2
+                right = len(pages) - 1 - left
+                order.extend([right, left, left + 1, right - 1])
+            if kind == "unbooklet":
+                order = sorted(pages, key=order.__getitem__)
+            self.apply_page_order(order)
+            return
+        if kind in {"collate", "collate-reverse"}:
+            split = (len(pages) + 1) // 2
+            fronts, backs = pages[:split], pages[split:]
+            if kind == "collate-reverse":
+                backs.reverse()
+            result = pages.copy()
+            result[::2], result[1::2] = fronts, backs
+            self.apply_page_order(result)
+            return
         orders = {
             "reverse": pages[::-1],
             "odd": pages[::2] + pages[1::2],
@@ -2213,7 +2248,7 @@ class Editor(tk.Tk):
         selection = simpledialog.askstring(
             "Export page ranges",
             f"Pages from 1 to {self.doc.count}, for example 1,3-5.\n"
-            "Pages follow your entered order; duplicates are rejected.",
+            "Use all, odd, even, last, or 3-last. Each page may appear once.",
             parent=self,
             initialvalue=str(self.page + 1),
         )

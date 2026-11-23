@@ -24,7 +24,7 @@ from test_document import fixture_pdf
         "1-6",
         "1.0",
         "1;2",
-        "all",
+        "unknown",
         "1,1",
         "1-3,3",
         "1--2",
@@ -107,3 +107,25 @@ def test_invalid_export_indices(indices, tmp_path):
     with pytest.raises(ValueError):
         Document(fixture_pdf()).export_pages(indices, tmp_path / "invalid.pdf")
     assert not (tmp_path / "invalid.pdf").exists()
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected"),
+    [
+        ("odd", [0, 2, 4]),
+        ("even", [1, 3]),
+        ("ALL", [0, 1, 2, 3, 4]),
+        ("last,1-2", [4, 0, 1]),
+        ("3-last", [2, 3, 4]),
+        ("0002-00003", [1, 2]),
+    ],
+)
+def test_page_presets(selection, expected):
+    assert parse_page_ranges(selection, 5) == expected
+
+
+def test_overlapping_and_empty_presets():
+    with pytest.raises(ValueError):
+        parse_page_ranges("odd,last", 5)
+    with pytest.raises(ValueError):
+        parse_page_ranges("even", 1)
