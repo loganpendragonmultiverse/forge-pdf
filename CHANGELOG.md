@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0
+
+- Collate two-pass scans in either back-side order and arrange or restore booklet order.
+- Accept all, odd, even, last and ranges ending in last across page selection dialogs.
+- Handle very long numeric input without exposing an integer-conversion error.
+
 ## 1.6.1 - 2026-11-16
 
 - Update the PDF parser to pypdf 7.0.0 and the renderer to pypdfium2 5.15.0 for upstream parsing and PDFium security fixes.

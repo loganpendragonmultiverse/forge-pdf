@@ -63,13 +63,29 @@ def parse_page_ranges(selection: str, page_count: int) -> list[int]:
     if len(selection) > 8192:
         raise ValueError("The page selection is too long.")
     for part in selection.split(","):
-        match = re.fullmatch(r"\s*([0-9]+)(?:\s*-\s*([0-9]+))?\s*", part)
-        if not match:
-            raise ValueError("Use one-based pages and ascending ranges, for example 1,3-5.")
-        first, last = int(match[1]), int(match[2] or match[1])
-        if not 1 <= first <= last <= page_count:
-            raise ValueError(f"Choose ascending page ranges within 1 to {page_count}.")
-        for number in range(first, last + 1):
+        term = part.strip().lower()
+        presets = {
+            "all": range(1, page_count + 1),
+            "odd": range(1, page_count + 1, 2),
+            "even": range(2, page_count + 1, 2),
+            "last": (page_count,),
+        }
+        if term in presets:
+            numbers = presets[term]
+            if not numbers:
+                raise ValueError("No pages match that selection.")
+        else:
+            match = re.fullmatch(r"0*([0-9]{1,4})(?:\s*-\s*(0*[0-9]{1,4}|last))?", term)
+            if not match:
+                raise ValueError("Use pages, ascending ranges, all, odd, even, or last.")
+            first = int(match[1])
+            last = (
+                page_count if match[2] == "last" else int((match[2] or match[1]).lstrip("0") or "0")
+            )
+            if not 1 <= first <= last <= page_count:
+                raise ValueError(f"Choose ascending page ranges within 1 to {page_count}.")
+            numbers = range(first, last + 1)
+        for number in numbers:
             if number in seen:
                 raise ValueError("Select each page only once; duplicate pages are not allowed.")
             seen.add(number)
