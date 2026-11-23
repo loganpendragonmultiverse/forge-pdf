@@ -8,7 +8,7 @@
 - Split into chapter PDFs at top-level bookmarks and export a page-aligned embedded-text revision comparison.
 - Protect original and imported source paths and file identities in both the OCR dialog and its worker.
 
-## 1.7.0
+## 1.7.0 - 2026-11-23
 
 - Collate two-pass scans in either back-side order and arrange or restore booklet order.
 - Accept all, odd, even, last and ranges ending in last across page selection dialogs.
