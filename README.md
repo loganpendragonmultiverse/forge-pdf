@@ -8,7 +8,7 @@ or upload. White out a line, add a replacement, remove a footer, or put pages in
 
 ## Quick start
 
-1. Download **Forge-PDF-1.7.0-Windows.zip** from the release page and extract it once.
+1. Download **Forge-PDF-1.8.0-Windows.zip** from the release page and extract it once.
 2. Open the **Forge PDF** folder and double-click **Forge PDF.exe**. No installation or Python setup is needed.
 3. Open a PDF, select **Whiteout**, and drag over the area you want to cover.
 4. Use **Add text** to place new text, then **Save a copy** under a different name.
@@ -21,6 +21,14 @@ is the ready-to-run application.
 and images remain in the PDF and can be extracted. Do not use them to remove secrets.**
 
 ## Features
+
+- Add mixed-document offline OCR that keeps existing text pages, skips blank or unsupported vector-only pages, and maps text back onto eligible rotated or cropped scans.
+- Export two-up and four-up sheets and folded booklet sheets with automatic blank padding on Letter, A4, Legal or A5. These rendered print copies contain page images.
+- Export a selected sequence as a multipage color or grayscale TIFF.
+- Split into chapter PDFs at top-level bookmarks and export a page-aligned embedded-text revision comparison.
+- Protect original and imported source paths and file identities in both the OCR dialog and its worker.
+
+Use **Page actions → Export and OCR → Print and review** for print layouts, TIFF, chapter splits and text comparisons. Print exports accept 40 pages, TIFF accepts 20, and comparison accepts 100 pages per input. Mixed OCR accepts 20 pages and skips an entire page if it already contains searchable text. Check orientation and recognition quality before sharing.
 
 - Select all, odd, even, last, or a range through the last page in page-range dialogs.
 - Arrange a multiple of four pages for two-up booklet printing, or restore reading order from that layout.

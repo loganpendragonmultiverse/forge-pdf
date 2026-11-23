@@ -94,3 +94,7 @@ The publishing module lays out text and worksheet PDFs and builds bounded contac
 sheets, split and image archives, and CSV reports. Exports reuse source identity
 checks and atomic publication. Imported text files keep their source identity after
 insertion. CSV reports neutralize formula prefixes before writing cells.
+
+## 1.8.0 print, review and mixed OCR
+
+The print and review menu uses production.py for bounded print, TIFF, chapter and comparison workflows. Mixed OCR uses visible_page to map rendered layer coordinates into the original crop and rotation.

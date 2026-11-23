@@ -72,6 +72,9 @@ def _work(connection, memory_name, length, role, params, cancel_event):
                 if params.get("preserve_pages")
                 else document.export_searchable_image_copy
             )
+            document.sources.update(Path(p) for p in params.get("source_paths", []))
+            document.source_identities.update(tuple(key) for key in params.get("source_ids", []))
+            options = {"mixed": params.get("mixed", False)} if params.get("preserve_pages") else {}
             export(
                 Path(params["path"]),
                 overwrite=params["overwrite"],
@@ -79,6 +82,7 @@ def _work(connection, memory_name, length, role, params, cancel_event):
                 language=params["language"],
                 progress=progress,
                 cancelled=cancel_event.is_set,
+                **options,
             )
             connection.send_bytes(json.dumps({"status": "ocr"}).encode())
         else:
