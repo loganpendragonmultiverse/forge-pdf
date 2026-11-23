@@ -63,13 +63,29 @@ def parse_page_ranges(selection: str, page_count: int) -> list[int]:
     if len(selection) > 8192:
         raise ValueError("The page selection is too long.")
     for part in selection.split(","):
-        match = re.fullmatch(r"\s*([0-9]+)(?:\s*-\s*([0-9]+))?\s*", part)
-        if not match:
-            raise ValueError("Use one-based pages and ascending ranges, for example 1,3-5.")
-        first, last = int(match[1]), int(match[2] or match[1])
-        if not 1 <= first <= last <= page_count:
-            raise ValueError(f"Choose ascending page ranges within 1 to {page_count}.")
-        for number in range(first, last + 1):
+        term = part.strip().lower()
+        presets = {
+            "all": range(1, page_count + 1),
+            "odd": range(1, page_count + 1, 2),
+            "even": range(2, page_count + 1, 2),
+            "last": (page_count,),
+        }
+        if term in presets:
+            numbers = presets[term]
+            if not numbers:
+                raise ValueError("No pages match that selection.")
+        else:
+            match = re.fullmatch(r"0*([0-9]{1,4})(?:\s*-\s*(0*[0-9]{1,4}|last))?", term)
+            if not match:
+                raise ValueError("Use pages, ascending ranges, all, odd, even, or last.")
+            first = int(match[1])
+            last = (
+                page_count if match[2] == "last" else int((match[2] or match[1]).lstrip("0") or "0")
+            )
+            if not 1 <= first <= last <= page_count:
+                raise ValueError(f"Choose ascending page ranges within 1 to {page_count}.")
+            numbers = range(first, last + 1)
+        for number in numbers:
             if number in seen:
                 raise ValueError("Select each page only once; duplicate pages are not allowed.")
             seen.add(number)
@@ -721,6 +737,7 @@ class Document:
         ocr_dir: Path | None = None,
         language: str = "eng",
         progress: Callable[[int, int], None] | None = None,
+        mixed: bool = False,
         cancelled: Callable[[], bool] | None = None,
     ) -> None:
         """Add invisible OCR text to a copy of simple, image-based PDF pages.
@@ -748,10 +765,22 @@ class Document:
         root = writer._root_object
         if "/AcroForm" in root or "/Perms" in root:
             raise ValueError("OCR text-layer export does not support forms or signed PDFs.")
-        for page in writer.pages:
+        eligible = set()
+        for index, page in enumerate(writer.pages):
+            if mixed and page.extract_text().strip():
+                continue
             box = page.mediabox
             crop = page.cropbox
-            if (
+            if mixed and (
+                page.get("/UserUnit", 1) != 1
+                or page.rotation % 90
+                or not (
+                    box.left <= crop.left < crop.right <= box.right
+                    and box.bottom <= crop.bottom < crop.top <= box.top
+                )
+            ):
+                raise ValueError("Unsupported OCR page geometry.")
+            if not mixed and (
                 page.get("/Rotate", 0) % 360
                 or page.get("/UserUnit", 1) != 1
                 or tuple(float(v) for v in box) != tuple(float(v) for v in crop)
@@ -773,7 +802,12 @@ class Document:
                     xobjects.get_object() if hasattr(xobjects, "get_object") else xobjects
                 ).values()
             ):
+                if mixed:
+                    continue
                 raise ValueError("OCR text-layer export needs an image on every page.")
+            eligible.add(index)
+        if not eligible:
+            raise ValueError("No image pages without existing text were found.")
         if progress:
             progress(0, self.count)
         with tempfile.TemporaryDirectory(prefix="forge-pdf-ocr-") as directory:
@@ -781,7 +815,14 @@ class Document:
             for index, page in enumerate(writer.pages):
                 if cancelled and cancelled():
                     raise ValueError("OCR cancelled.")
+                if index not in eligible:
+                    if progress:
+                        progress(index + 1, self.count)
+                    continue
                 width, height = self.size(index)
+                expected_w, expected_h, placement = visible_page(page)
+                if abs(expected_w - width) > 0.1 or abs(expected_h - height) > 0.1:
+                    raise ValueError("The visible page geometry cannot be mapped reliably.")
                 if width * height * 4 > 4_000_000:
                     raise ValueError("A page is too large for bounded OCR export.")
                 image = self.render(index, scale=2.0)
@@ -850,7 +891,10 @@ class Document:
                             "OCR engine returned image content instead of a text-only layer."
                         )
                     page.merge_transformed_page(
-                        layer, Transformation().scale(width / layer_width, height / layer_height)
+                        layer,
+                        Transformation()
+                        .scale(width / layer_width, height / layer_height)
+                        .transform(placement),
                     )
                     source.unlink()
                     result.with_suffix(".pdf").unlink()
